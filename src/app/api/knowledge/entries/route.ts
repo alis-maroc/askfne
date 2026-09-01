@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { indexKnowledgeEntry } from "@/lib/ai/semantic-search";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request, "knowledge:read");
@@ -85,6 +86,34 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Fire-and-forget embedding indexing so future semantic queries find this entry.
+    // Failure is logged but does not block the API response.
+    void (async () => {
+      try {
+        const settings = await prisma.settings.findUnique({
+          where: { id: "default" },
+          select: { aiApiKey: true, aiProvider: true },
+        });
+        if (
+          settings?.aiProvider === "openai" &&
+          settings.aiApiKey?.startsWith("sk-")
+        ) {
+          const ok = await indexKnowledgeEntry(entry.id, settings.aiApiKey);
+          if (!ok) {
+            logger.warn("Failed to index new knowledge entry", {
+              id: entry.id,
+              title: entry.title,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn("Embedding indexing threw for new entry", {
+          id: entry.id,
+          err: (err as Error).message,
+        });
+      }
+    })();
 
     return NextResponse.json(entry, { status: 201 });
   } catch (error) {

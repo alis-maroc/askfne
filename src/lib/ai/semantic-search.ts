@@ -21,23 +21,51 @@ interface SearchResult {
 }
 
 /**
- * Generate embedding for a text using OpenAI.
+ * Detect whether an API key belongs to OpenRouter (sk-or-v1-*).
+ * OpenRouter exposes OpenAI-compatible embedding models with the same key.
+ */
+function isOpenRouterKey(apiKey: string | null | undefined): boolean {
+  return typeof apiKey === "string" && apiKey.startsWith("sk-or-v1-");
+}
+
+/**
+ * Generate embedding for a text using OpenAI or OpenRouter (auto-detected).
+ *
+ * - `sk-...` keys  → https://api.openai.com/v1/embeddings (text-embedding-3-small)
+ * - `sk-or-v1-...` → https://openrouter.ai/api/v1/embeddings (text-embedding-3-small)
  */
 async function generateEmbedding(text: string, apiKey: string): Promise<number[] | null> {
   try {
-    const response = await fetch("https://api.openai.com/v1/embeddings", {
+    const useOpenRouter = isOpenRouterKey(apiKey);
+    const endpoint = useOpenRouter
+      ? "https://openrouter.ai/api/v1/embeddings"
+      : "https://api.openai.com/v1/embeddings";
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    };
+
+    // OpenRouter requires these attribution headers per their docs.
+    if (useOpenRouter) {
+      headers["HTTP-Referer"] = "https://owly.example.com";
+      headers["X-Title"] = "Owly Knowledge Base";
+    }
+
+    const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: "text-embedding-3-small",
         input: text.substring(0, 8000),
       }),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      logger.warn(`Embedding API error ${response.status}: ${errText.substring(0, 200)}`);
+      return null;
+    }
 
     const data = await response.json();
     return data.data?.[0]?.embedding || null;
@@ -45,6 +73,33 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
     logger.error("Failed to generate embedding:", error);
     return null;
   }
+}
+
+/**
+ * Pick the best available API key for embeddings.
+ *
+ * Prefers an OpenAI key on the primary slot, falls back to an OpenRouter key
+ * (typically stored in fallbackApiKey when primary is Groq).
+ */
+async function getEmbeddingApiKey(): Promise<string | null> {
+  const settings = await prisma.settings.findFirst({
+    select: { aiApiKey: true, aiProvider: true, fallbackApiKey: true, fallbackProvider: true },
+  });
+  if (!settings) return null;
+
+  // Prefer primary when it's an OpenAI-compatible key.
+  if (settings.aiProvider === "openai" && settings.aiApiKey?.startsWith("sk-")) {
+    return settings.aiApiKey;
+  }
+  // OpenRouter keys can drive embeddings even when primary provider is Groq.
+  if (isOpenRouterKey(settings.fallbackApiKey)) {
+    return settings.fallbackApiKey;
+  }
+  // Or if primary itself is OpenRouter (rare config).
+  if (isOpenRouterKey(settings.aiApiKey)) {
+    return settings.aiApiKey;
+  }
+  return null;
 }
 
 /**
@@ -104,15 +159,12 @@ export async function searchKnowledgeBase(
 
   if (entries.length === 0) return [];
 
-  // Try to get API key for embeddings (only if provider is OpenAI)
-  const settings = await prisma.settings.findFirst({
-    select: { aiApiKey: true, aiProvider: true },
-  });
+  // Try to get API key for embeddings (OpenAI or OpenRouter, both work).
+  const apiKey = await getEmbeddingApiKey();
 
   let results: SearchResult[];
-  const isOpenAI = settings?.aiProvider === "openai" && Boolean(settings?.aiApiKey?.startsWith("sk-"));
 
-  if (isOpenAI && settings?.aiApiKey) {
+  if (apiKey) {
     // Try semantic search with embeddings
     const cacheKey = `embedding:${Buffer.from(query).toString("base64").substring(0, 50)}`;
     let queryEmbedding: number[] | null = null;
@@ -121,7 +173,7 @@ export async function searchKnowledgeBase(
     if (cached) {
       queryEmbedding = JSON.parse(cached);
     } else {
-      queryEmbedding = await generateEmbedding(query, settings.aiApiKey);
+      queryEmbedding = await generateEmbedding(query, apiKey);
       if (queryEmbedding) {
         await cacheSet(cacheKey, JSON.stringify(queryEmbedding), 3600);
       }
@@ -184,10 +236,14 @@ function keywordSearch(
 
 /**
  * Generate and store embedding for a knowledge entry.
+ *
+ * Accepts an explicit apiKey for backward compatibility. If the key is not
+ * suitable (e.g. it's a Groq key), the function falls back to the best
+ * embedding-capable key from Settings (OpenRouter fallbackApiKey, etc.).
  */
 export async function indexKnowledgeEntry(
   entryId: string,
-  apiKey: string
+  apiKey?: string
 ): Promise<boolean> {
   const entry = await prisma.knowledgeEntry.findUnique({
     where: { id: entryId },
@@ -195,8 +251,20 @@ export async function indexKnowledgeEntry(
 
   if (!entry) return false;
 
+  // Resolve a usable key: explicit OpenAI/OpenRouter key wins,
+  // otherwise we look up the best embedding key from Settings.
+  const effectiveKey =
+    apiKey && (apiKey.startsWith("sk-") || apiKey.startsWith("sk-or-v1-"))
+      ? apiKey
+      : await getEmbeddingApiKey();
+
+  if (!effectiveKey) {
+    logger.warn("indexKnowledgeEntry: no usable embedding key found");
+    return false;
+  }
+
   const text = `${entry.title}\n${entry.content}`;
-  const embedding = await generateEmbedding(text, apiKey);
+  const embedding = await generateEmbedding(text, effectiveKey);
 
   if (!embedding) return false;
 

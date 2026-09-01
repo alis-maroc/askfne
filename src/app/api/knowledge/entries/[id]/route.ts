@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { indexKnowledgeEntry } from "@/lib/ai/semantic-search";
 
 export async function PUT(
   request: NextRequest,
@@ -39,6 +40,34 @@ export async function PUT(
         },
       },
     });
+
+    // Re-generate embedding whenever title or content changes.
+    // Fire-and-forget: log failure but do not block the API response.
+    void (async () => {
+      try {
+        const settings = await prisma.settings.findUnique({
+          where: { id: "default" },
+          select: { aiApiKey: true, aiProvider: true },
+        });
+        if (
+          settings?.aiProvider === "openai" &&
+          settings.aiApiKey?.startsWith("sk-")
+        ) {
+          const ok = await indexKnowledgeEntry(entry.id, settings.aiApiKey);
+          if (!ok) {
+            logger.warn("Failed to re-index updated knowledge entry", {
+              id: entry.id,
+              title: entry.title,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn("Embedding re-indexing threw for updated entry", {
+          id: entry.id,
+          err: (err as Error).message,
+        });
+      }
+    })();
 
     return NextResponse.json(entry);
   } catch (error) {
