@@ -808,6 +808,54 @@ async function sendText(jid: string, text: string): Promise<void> {
   }
 }
 
+const FNE_LOGO_PATH = path.join(process.cwd(), "public", "logo_fne.gif");
+
+/**
+ * Send the FNE logo with a short caption as the first message of a new WhatsApp chat.
+ * Falls back silently to plain-text welcome if the image is missing or fails to send.
+ */
+async function sendWelcomeImage(jid: string): Promise<boolean> {
+  if (!waState.sock) return false;
+  try {
+    let buffer: Buffer | null = null;
+    try {
+      buffer = fs.readFileSync(FNE_LOGO_PATH);
+    } catch (readErr) {
+      logger.warn("[WhatsApp/Baileys] FNE logo not found, skipping welcome image:", {
+        path: FNE_LOGO_PATH,
+        error: String(readErr),
+      });
+      return false;
+    }
+    if (!buffer) return false;
+
+    // Simulate typing for the image
+    await waState.sock.sendPresenceUpdate("composing", jid).catch(() => { });
+    const typingDuration = Math.min(1500, Math.max(800, buffer.length / 200));
+    await new Promise((resolve) => setTimeout(resolve, typingDuration));
+
+    const now = Date.now();
+    const timeSinceLast = now - lastSendTimestamp;
+    if (timeSinceLast < MIN_GAP_BETWEEN_MESSAGES_MS) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, MIN_GAP_BETWEEN_MESSAGES_MS - timeSinceLast)
+      );
+    }
+    lastSendTimestamp = Date.now();
+
+    await waState.sock.sendPresenceUpdate("paused", jid).catch(() => { });
+    const sendRes = await waState.sock.sendMessage(jid, {
+      image: buffer,
+      caption: "🏛️ الجامعة الوطنية للتعليم FNE\nالمساعد الرقمي التفاعلي",
+    });
+    logger.info(`[WhatsApp/Baileys] Welcome image sent to ${jid}, id: ${sendRes?.key?.id || "unknown"}`);
+    return true;
+  } catch (err) {
+    logger.error(`[WhatsApp/Baileys] sendWelcomeImage error to ${jid}:`, { error: String(err) });
+    return false;
+  }
+}
+
 function extractMessageContent(msg: unknown): string {
   if (!msg || typeof msg !== "object") return "";
   let m = (msg as { message?: Record<string, unknown> }).message;
@@ -1151,19 +1199,39 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
     // ── End suggestion flow ──────────────────────────────────────────────────
 
     if (!menuShown || greeting || isNewConversation) {
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: {
-          metadata: {
-            ...metadata,
-            menuShown: true,
-            awaitingMenuChoice: true,
-            activeCategory: null,
-            categoryPage: 1,
-            pageArticleIds: [],
+      // Send FNE logo as the first message on new conversations (once per conversation)
+      if (isNewConversation && !metadata.welcomeImageSent) {
+        await sendWelcomeImage(jid);
+        // Update metadata before the rest so the logo is never re-sent
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            metadata: {
+              ...metadata,
+              welcomeImageSent: true,
+              menuShown: true,
+              awaitingMenuChoice: true,
+              activeCategory: null,
+              categoryPage: 1,
+              pageArticleIds: [],
+            },
           },
-        },
-      });
+        });
+      } else {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            metadata: {
+              ...metadata,
+              menuShown: true,
+              awaitingMenuChoice: true,
+              activeCategory: null,
+              categoryPage: 1,
+              pageArticleIds: [],
+            },
+          },
+        });
+      }
       const menuText = buildMenuText();
       await recordExchange(conversation.id, messageContent, menuText);
       await sendText(jid, menuText);
