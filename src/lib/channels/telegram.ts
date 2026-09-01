@@ -310,64 +310,64 @@ async function processHubMenuSelectionTelegram(
   }
 
   if (selected.id === "national") {
-      const offices = await fetchHubOffices("FNE").catch(() => []);
-      const office = offices.find((o) => o.level === "وطني") || offices[0];
-      if (office) {
-        const text = formatOfficeContacts(office);
-        await sendTelegramMessage(token, chatId, text + "\n\n0️⃣ رجوع للقائمة الرئيسية");
-        return;
-      }
-    } else if (selected.id === "regional") {
-      const nextState = setHubMenuState(convId, "telegram", "regions", undefined, "المكاتب الجهوية", undefined, currentState);
-      nextState.mode = "regional";
-      await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
+    const offices = await fetchHubOffices("FNE").catch(() => []);
+    const office = offices.find((o) => o.level === "وطني") || offices[0];
+    if (office) {
+      const text = formatOfficeContacts(office);
+      await sendTelegramMessage(token, chatId, text + "\n\n0️⃣ رجوع للقائمة الرئيسية");
       return;
-    } else if (selected.id === "provincial") {
-      const nextState = setHubMenuState(convId, "telegram", "regions", undefined, "اختر جهة أولاً", undefined, currentState);
-      nextState.mode = "provincial";
-      await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
-      return;
-    } else if (selected.id === "local") {
-      const nextState = setHubMenuState(convId, "telegram", "regions", undefined, "اختر جهة أولاً", undefined, currentState);
-      nextState.mode = "local";
-      await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
-      return;
-    } else if (selected.id === "parallel") {
-      const nextState = setHubMenuState(convId, "telegram", "national", undefined, "التنظيمات الموازية", undefined, currentState);
+    }
+  } else if (selected.id === "regional") {
+    const nextState = setHubMenuState(convId, "telegram", "regions", undefined, "المكاتب الجهوية", undefined, currentState);
+    nextState.mode = "regional";
+    await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
+    return;
+  } else if (selected.id === "provincial") {
+    const nextState = setHubMenuState(convId, "telegram", "regions", undefined, "اختر جهة أولاً", undefined, currentState);
+    nextState.mode = "provincial";
+    await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
+    return;
+  } else if (selected.id === "local") {
+    const nextState = setHubMenuState(convId, "telegram", "regions", undefined, "اختر جهة أولاً", undefined, currentState);
+    nextState.mode = "local";
+    await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
+    return;
+  } else if (selected.id === "parallel") {
+    const nextState = setHubMenuState(convId, "telegram", "national", undefined, "التنظيمات الموازية", undefined, currentState);
+    nextState.mode = "parallel";
+    await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
+    return;
+  } else if (selected.id === "search") {
+    await exitHubMenu(convId, metadata);
+    await sendTelegramMessage(token, chatId, "✏️ أرسل اسم المكتب أو الإقليم للبحث عنه.");
+    return;
+  } else if (selected.id.startsWith("parallel:")) {
+    if (selected.parentId) {
+      const nextState = setHubMenuState(convId, "telegram", "parallelBranches", selected.parentId, selected.label, selected.searchTerm, currentState);
       nextState.mode = "parallel";
       await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
       return;
-    } else if (selected.id === "search") {
-      await exitHubMenu(convId, metadata);
-      await sendTelegramMessage(token, chatId, "✏️ أرسل اسم المكتب أو الإقليم للبحث عنه.");
+    }
+    const organizations = await fetchParallelOrganizations().catch(() => []);
+    const organization = organizations.find((office) => office.name.includes(selected.searchTerm || ""));
+    if (organization) {
+      await sendTelegramMessage(token, chatId, formatOfficeContacts(organization));
       return;
-    } else if (selected.id.startsWith("parallel:")) {
-        if (selected.parentId) {
-          const nextState = setHubMenuState(convId, "telegram", "parallelBranches", selected.parentId, selected.label, selected.searchTerm, currentState);
-          nextState.mode = "parallel";
-          await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
-          return;
-        }
-        const organizations = await fetchParallelOrganizations().catch(() => []);
-        const organization = organizations.find((office) => office.name.includes(selected.searchTerm || ""));
-        if (organization) {
-          await sendTelegramMessage(token, chatId, formatOfficeContacts(organization));
-          return;
-        }
-    } else if (selected.id.startsWith("region:")) {
-      const rootOffices = await fetchRootOffices().catch(() => []);
-      const region = rootOffices.find((office) => office.name === selected.officeName);
-      if (!region?.parentId) {
-        await sendTelegramMessage(token, chatId, "⚠️ تعذّر إيجاد المكاتب الإقليمية لهذه الجهة.");
-        return;
-      }
-      const nextState = setHubMenuState(convId, "telegram", "provinces", region.parentId, selected.label, undefined, currentState);
-      nextState.mode = currentState.mode || "provincial";
-      await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
+    }
+  } else if (selected.id.startsWith("region:")) {
+    const rootOffices = await fetchRootOffices().catch(() => []);
+    const region = rootOffices.find((office) => office.name === selected.officeName);
+    if (!region?.parentId) {
+      await sendTelegramMessage(token, chatId, "⚠️ تعذّر إيجاد المكاتب الإقليمية لهذه الجهة.");
       return;
-    } else if (selected.id.startsWith("branch:")) {
-      const branches = currentState.parentId ? await fetchParallelBranches(currentState.parentId).catch(() => []) : [];
-      const branch = selected.office || branches.find((entry) => entry.name === selected.officeName);
+    }
+    const nextState = setHubMenuState(convId, "telegram", "provinces", region.parentId, selected.label, undefined, currentState);
+    nextState.mode = currentState.mode || "provincial";
+    await renderHubMenuTextTelegram(chatId, conversationId, messageText, metadata);
+    return;
+  } else if (selected.id.startsWith("branch:")) {
+    const branches = currentState.parentId ? await fetchParallelBranches(currentState.parentId).catch(() => []) : [];
+    const branch = selected.office || branches.find((entry) => entry.name === selected.officeName);
     if (branch) {
       const text = formatOfficeContacts(branch);
       await sendTelegramMessage(token, chatId, text);
@@ -882,7 +882,8 @@ export async function sendTelegramMessage(
 }
 
 /**
- * Send a message with inline keyboard buttons to Telegram
+ * Send a message with inline keyboard buttons to Telegram.
+ * Chunks long text (>4096 chars): first chunk with keyboard, rest as plain messages.
  */
 async function sendTelegramMessageWithKeyboard(
   token: string,
@@ -891,31 +892,62 @@ async function sendTelegramMessageWithKeyboard(
   keyboard: Array<Array<{ text: string; callback_data: string }>>
 ): Promise<boolean> {
   try {
-    const url = `https://api.telegram.org/bot${token}/sendMessage`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        reply_markup: {
-          inline_keyboard: keyboard,
-        },
-      }),
-    });
+    // Always chunk to prevent "message is too long" errors
+    const chunks = splitTelegramText(text || " ");
 
-    if (!res.ok) {
-      const error = await res.text();
-      logger.error(`[Telegram] Failed to send message with keyboard: HTTP ${res.status} ${error}`);
-      return false;
+    // Send first chunk with keyboard buttons
+    const first = await sendTelegramPayloadWithKeyboard(token, chatId, chunks[0], keyboard);
+    if (!first.ok) {
+      // If keyboard send fails (e.g. still too long after split), try plain fallback
+      logger.warn("[Telegram] Keyboard send failed, falling back to plain text:", {
+        description: first.description,
+      });
+      const plain = await sendTelegramPayload(token, chatId, chunks[0]);
+      if (!plain.ok) {
+        logger.error("[Telegram] Failed to send first chunk:", undefined, {
+          description: plain.description,
+        });
+        return false;
+      }
+    }
+
+    // Send remaining chunks as plain messages (no keyboard)
+    for (let i = 1; i < chunks.length; i++) {
+      const result = await sendTelegramPayload(token, chatId, chunks[i]);
+      if (!result.ok) {
+        logger.error(`[Telegram] Failed to send chunk ${i + 1}/${chunks.length}:`, undefined, {
+          description: result.description,
+        });
+        return false;
+      }
     }
 
     return true;
   } catch (error) {
     logger.error("[Telegram] sendTelegramMessageWithKeyboard failed:", error);
-    logger.error("[Telegram] sendTelegramMessageWithKeyboard debug:", { chatId, textLength: text?.length, keyboardRows: keyboard?.length });
     return false;
   }
+}
+
+async function sendTelegramPayloadWithKeyboard(
+  token: string,
+  chatId: number,
+  text: string,
+  keyboard: Array<Array<{ text: string; callback_data: string }>>
+): Promise<{ ok: boolean; description?: string }> {
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+    }),
+  });
+  const data = (await response.json().catch(() => ({}))) as { ok?: boolean; description?: string };
+  return { ok: data.ok === true, description: data.description };
 }
 
 async function sendTelegramChatAction(
