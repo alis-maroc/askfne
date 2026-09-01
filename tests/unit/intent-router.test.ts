@@ -166,6 +166,48 @@ describe("classifyIntent", () => {
         });
     });
 
+    describe("Organization / formation / election queries — KB fallback", () => {
+        // Regression test: "كيف يتم تأسيس وتنظيم المكاتب الجهوية والإقليمية"
+        // contains both "المكتب الجهوي" and "المكتب الاقليمي" which used to
+        // route to ORGANE_OFFICIEL (refuse). Now it must route to
+        // QUESTION_GENERALE so the KB can answer.
+        it('classifies "كيف يتم تأسيس وتنظيم المكاتب الجهوية والإقليمية" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(
+                normalizeForTest("كيف يتم تأسيس وتنظيم المكاتب الجهوية والإقليمية")
+            );
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "الية تشكيل المكتب الوطني" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(normalizeForTest("الية تشكيل المكتب الوطني"));
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "ما هو المكتب الوطني" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(normalizeForTest("ما هو المكتب الوطني"));
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "ما هي اليات انتخاب المكتب الوطني" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(
+                normalizeForTest("ما هي اليات انتخاب المكتب الوطني")
+            );
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "كيف يتم تشكيل اللجنة الادارية" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(
+                normalizeForTest("كيف يتم تشكيل اللجنة الادارية")
+            );
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "الية انتخاب المكتب الجهوي" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(normalizeForTest("الية انتخاب المكتب الجهوي"));
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+    });
+
     describe("TICKET_REQUEST — explicit ticket requests only", () => {
         it('classifies "فتح تذكرة" as TICKET_REQUEST', () => {
             const result = classifyIntent(normalizeForTest("فتح تذكرة"));
