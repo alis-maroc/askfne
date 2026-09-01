@@ -164,7 +164,7 @@ export default function CustomersPage() {
         const res = await fetch(`/api/customers?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
-          setCustomers(data.customers);
+          setCustomers(Array.isArray(data) ? data : (data.customers || data.data || []));
           setPagination(data.pagination);
         }
       } catch (error) {

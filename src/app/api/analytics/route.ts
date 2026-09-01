@@ -19,6 +19,45 @@ function formatDateKey(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
+import { isAssistantRefusal } from "@/lib/ai/refusal-detector";
+
+function classifyQuestionCategory(text: string): string {
+  const lower = text.toLowerCase();
+  if (
+    [
+      "ترقية", "ترقي", "رتبة", "درجة", "سلم", "تنقيط", "رخصة", "رخص", "مرض",
+      "عقوبة", "عقوبات", "تأديب", "إلحاق", "استيداع", "تقاعد", "أجرة", "وظيفة", "موظف"
+    ].some((k) => lower.includes(k))
+  ) {
+    return "النظام الأساسي للوظيفة العمومية";
+  }
+  if (
+    [
+      "عطلة", "عطل", "امتحان", "امتحانات", "مراقبة مستمرة", "دخول مدرسي",
+      "سنة دراسية", "مقرر", "تاريخ"
+    ].some((k) => lower.includes(k))
+  ) {
+    return "مقرر السنة الدراسية";
+  }
+  if (
+    [
+      "مكتب", "مكاتب", "كاتب", "إقليمي", "جهوي", "وطني", "تأسيس",
+      "انخراط", "هاتف", "رقم", "تيزنيت", "فاس", "الرباط", "الدار البيضاء"
+    ].some((k) => lower.includes(k))
+  ) {
+    return "المكاتب والتنظيم";
+  }
+  if (
+    [
+      "قانون", "أساسي", "أهداف", "فصل", "مادة", "مؤتمر", "مجلس وطني",
+      "لجنة إدارية", "جامعة"
+    ].some((k) => lower.includes(k))
+  ) {
+    return "القانون الأساسي للجامعة";
+  }
+  return "استفسارات عامة";
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request, "analytics:read");
   if (!isAuthenticated(auth)) return auth;
@@ -36,11 +75,12 @@ export async function GET(request: NextRequest) {
     categories,
     teamMembers,
     messages,
+    periodConversationsWithMessages,
   ] = await Promise.all([
     // Conversations in period
     prisma.conversation.findMany({
       where: { createdAt: { gte: periodStart } },
-      select: { id: true, createdAt: true, satisfaction: true, status: true },
+      select: { id: true, createdAt: true, satisfaction: true, status: true, channel: true },
     }),
 
     // All conversations (for resolution rate)
@@ -99,6 +139,25 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { createdAt: "asc" },
     }),
+
+    // Detailed conversation messages for question mining
+    prisma.conversation.findMany({
+      where: { createdAt: { gte: periodStart } },
+      select: {
+        id: true,
+        channel: true,
+        messages: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            role: true,
+            content: true,
+            createdAt: true,
+          },
+        },
+      },
+      take: 500,
+    }),
   ]);
 
   // -- Conversations per day --
@@ -123,11 +182,22 @@ export async function GET(request: NextRequest) {
     count: g._count.id,
   }));
 
-  // -- Avg response time (estimate from first assistant reply per conversation) --
+  // -- Hourly Activity (Peak Hours: 0 to 23) --
+  const hourMap: number[] = new Array(24).fill(0);
+  for (const m of messages) {
+    const hour = new Date(m.createdAt).getHours();
+    hourMap[hour]++;
+  }
+  const hourlyActivity = hourMap.map((count, hour) => ({
+    hour: `${hour.toString().padStart(2, "0")}:00`,
+    count,
+  }));
+
+  // -- Avg response time --
   const convFirstResponse: Record<string, number> = {};
   const convStart: Record<string, Date> = {};
   for (const m of messages) {
-    if (m.role === "user" && !convStart[m.conversationId]) {
+    if ((m.role === "user" || m.role === "customer") && !convStart[m.conversationId]) {
       convStart[m.conversationId] = new Date(m.createdAt);
     }
     if (
@@ -138,7 +208,7 @@ export async function GET(request: NextRequest) {
       const diffMs =
         new Date(m.createdAt).getTime() -
         convStart[m.conversationId].getTime();
-      convFirstResponse[m.conversationId] = diffMs / 60000; // minutes
+      convFirstResponse[m.conversationId] = diffMs / 60000;
     }
   }
   const responseTimes = Object.values(convFirstResponse);
@@ -170,13 +240,100 @@ export async function GET(request: NextRequest) {
         ) / 10
       : 0;
 
-  // -- Top categories --
+  // -- Question Analytics & Top 30 Questions --
+  const questionMap = new Map<
+    string,
+    {
+      question: string;
+      count: number;
+      category: string;
+      channels: Set<string>;
+      lastAskedAt: Date;
+      isUnanswered: boolean;
+      unansweredCount: number;
+    }
+  >();
+
+  const categoryCountMap: Record<string, number> = {
+    "النظام الأساسي للوظيفة العمومية": 0,
+    "مقرر السنة الدراسية": 0,
+    "المكاتب والتنظيم": 0,
+    "القانون الأساسي للجامعة": 0,
+    "استفسارات عامة": 0,
+  };
+
+  let totalQuestionsCount = 0;
+  let totalUnansweredQuestions = 0;
+
+  for (const conv of periodConversationsWithMessages) {
+    const msgs = conv.messages;
+    for (let i = 0; i < msgs.length; i++) {
+      const msg = msgs[i];
+      if (msg.role === "customer" || msg.role === "user") {
+        const text = msg.content.trim();
+        // Ignore single-digit navigation choices or greetings
+        if (["0", "1", "2", "3", "4"].includes(text) || text.length < 3) continue;
+
+        totalQuestionsCount++;
+        const category = classifyQuestionCategory(text);
+        categoryCountMap[category] = (categoryCountMap[category] || 0) + 1;
+
+        // Check the assistant's immediate response
+        let isUnanswered = false;
+        if (i + 1 < msgs.length && msgs[i + 1].role === "assistant") {
+          const reply = msgs[i + 1].content || "";
+          isUnanswered = isAssistantRefusal(reply);
+        }
+
+        if (isUnanswered) totalUnansweredQuestions++;
+
+        const normKey = text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+        const existing = questionMap.get(normKey);
+        if (existing) {
+          existing.count++;
+          existing.channels.add(conv.channel || "web");
+          if (isUnanswered) existing.unansweredCount++;
+          if (msg.createdAt > existing.lastAskedAt) {
+            existing.lastAskedAt = msg.createdAt;
+            existing.isUnanswered = isUnanswered;
+          }
+        } else {
+          questionMap.set(normKey, {
+            question: text,
+            count: 1,
+            category,
+            channels: new Set([conv.channel || "web"]),
+            lastAskedAt: msg.createdAt,
+            isUnanswered,
+            unansweredCount: isUnanswered ? 1 : 0,
+          });
+        }
+      }
+    }
+  }
+
+  // Extract Top 30 questions
+  const topQuestions = Array.from(questionMap.values())
+    .map((item) => ({
+      ...item,
+      channels: Array.from(item.channels),
+    }))
+    .sort((a, b) => b.count - a.count || b.lastAskedAt.getTime() - a.lastAskedAt.getTime())
+    .slice(0, 30);
+
+  const questionsByCategory = Object.entries(categoryCountMap)
+    .filter(([_, count]) => count > 0)
+    .map(([category, count]) => ({
+      category,
+      count,
+    }))
+    .sort((a, b) => b.count - a.count);
+
   const topCategories = categories.map((c) => ({
     category: c.name,
     hitCount: c._count.entries,
   }));
 
-  // -- Team performance --
   const teamPerformance = teamMembers
     .map((tm) => {
       const resolvedTickets = tm.tickets.filter(
@@ -203,6 +360,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     conversationsPerDay,
     channelBreakdown,
+    hourlyActivity,
     avgResponseTime,
     resolutionRate,
     satisfactionAvg,
@@ -217,5 +375,18 @@ export async function GET(request: NextRequest) {
     topCategories,
     teamPerformance,
     totalConversations: conversations.length,
+    // Question intelligence
+    totalQuestionsCount,
+    totalUnansweredQuestions,
+    aiAnswerRate:
+      totalQuestionsCount > 0
+        ? Math.round(
+            ((totalQuestionsCount - totalUnansweredQuestions) /
+              totalQuestionsCount) *
+              100
+          )
+        : 100,
+    questionsByCategory,
+    topQuestions,
   });
 }

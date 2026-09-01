@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { globalAIQueue } from "@/lib/ai/queue";
 
 const startTime = Date.now();
 
@@ -56,6 +57,7 @@ export async function GET() {
     environment: process.env.NODE_ENV || "development",
     uptime: `${hours}h ${minutes}m ${seconds}s`,
     services: checks,
+    aiQueue: globalAIQueue.getStats(),
     memory: {
       rss: `${Math.round(mem.rss / 1024 / 1024)}MB`,
       heap: `${Math.round(mem.heapUsed / 1024 / 1024)}/${Math.round(mem.heapTotal / 1024 / 1024)}MB`,

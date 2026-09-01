@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     const priority = searchParams.get("priority");
     const departmentId = searchParams.get("departmentId");
     const search = searchParams.get("search");
+    const type = searchParams.get("type");
 
     const where: Record<string, unknown> = {};
 
@@ -28,6 +29,10 @@ export async function GET(request: NextRequest) {
 
     if (departmentId && departmentId !== "all") {
       where.departmentId = departmentId;
+    }
+
+    if (type && type !== "all") {
+      where.type = type;
     }
 
     if (search && search.trim()) {

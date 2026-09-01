@@ -16,6 +16,7 @@ vi.mock("openai", () => {
 });
 
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+mockPrisma.office ??= { findMany: vi.fn() };
 
 describe("AI Engine", () => {
   beforeEach(async () => {
@@ -44,6 +45,7 @@ describe("AI Engine", () => {
 
     // Default knowledge base
     mockPrisma.knowledgeEntry.findMany.mockResolvedValue([]);
+    mockPrisma.office.findMany.mockResolvedValue([]);
 
     // Default conversation
     mockPrisma.conversation.findUnique.mockResolvedValue({
@@ -90,6 +92,136 @@ describe("AI Engine", () => {
     const response = await chat("nonexistent", "Hello");
 
     expect(response).toBe("Conversation not found.");
+  });
+
+  it("returns verified contacts for an Arabic spelling variant of one province", async () => {
+    mockPrisma.office.findMany.mockResolvedValue([
+      {
+        id: "office-ifni",
+        sourceId: 1,
+        isActive: true,
+        level: "إقليمي",
+        name: "المكتب الإقليمي لـ سيدي إفني",
+        region: "كلميم واد نون",
+        province: "سيدي إفني",
+        parentOffice: "",
+        secretary: "حسن لفت",
+        secretaryPhone: "0612345678",
+        treasurer: "",
+        treasurerPhone: "",
+      },
+    ]);
+
+    const { buildOfficeDirectAnswer } = await import("@/lib/ai/engine");
+    const response = await buildOfficeDirectAnswer("الكاتب الإقليمي افني");
+
+    expect(response).toContain("حسن لفت");
+    expect(response).toContain("0612345678");
+  });
+
+  it("asks for clarification instead of returning contacts for an ambiguous location", async () => {
+    mockPrisma.office.findMany.mockResolvedValue([
+      {
+        id: "office-qasim",
+        sourceId: 1,
+        isActive: true,
+        level: "إقليمي",
+        name: "المكتب الإقليمي لـ سيدي قاسم",
+        region: "الرباط سلا القنيطرة",
+        province: "سيدي قاسم",
+        parentOffice: "",
+        secretary: "اسم أول",
+        secretaryPhone: "0611111111",
+        treasurer: "",
+        treasurerPhone: "",
+      },
+      {
+        id: "office-slimane",
+        sourceId: 2,
+        isActive: true,
+        level: "إقليمي",
+        name: "المكتب الإقليمي لـ سيدي سليمان",
+        region: "الرباط سلا القنيطرة",
+        province: "سيدي سليمان",
+        parentOffice: "",
+        secretary: "اسم ثان",
+        secretaryPhone: "0622222222",
+        treasurer: "",
+        treasurerPhone: "",
+      },
+    ]);
+
+    const { buildOfficeDirectAnswer } = await import("@/lib/ai/engine");
+    const response = await buildOfficeDirectAnswer("هاتف المكتب الإقليمي سيدي");
+
+    expect(response).toContain("لم أستطع تحديد المكتب بدقة");
+    expect(response).not.toContain("0611111111");
+    expect(response).not.toContain("0622222222");
+  });
+
+  it("uses a verified Arabic spelling alias for a known province typo", async () => {
+    mockPrisma.office.findMany.mockResolvedValue([
+      {
+        id: "office-tiznit",
+        sourceId: 1,
+        isActive: true,
+        level: "إقليمي",
+        name: "المكتب الإقليمي لـ تيزنيت",
+        region: "سوس ماسة",
+        province: "تيزنيت",
+        parentOffice: "",
+        secretary: "هشام الكرطيط",
+        secretaryPhone: "0666469305",
+        treasurer: "المدني الذهبي",
+        treasurerPhone: "0668699235",
+      },
+    ]);
+
+    const { buildOfficeDirectAnswer } = await import("@/lib/ai/engine");
+    const response = await buildOfficeDirectAnswer("تزميت");
+
+    expect(response).toContain("هشام الكرطيط");
+    expect(response).toContain("0666469305");
+    expect(response).toContain("المدني الذهبي");
+    expect(response).toContain("0668699235");
+  });
+
+  it("confirms an office suggestion before any stale ticket confirmation", async () => {
+    mockPrisma.conversation.findUnique.mockResolvedValue({
+      id: "conv-1",
+      channel: "whatsapp",
+      customerName: "John",
+      metadata: {
+        pendingOfficeCandidate: "تيزنيت",
+        pendingTicket: { title: "Ancien ticket", description: "Ne pas créer", priority: "medium" },
+      },
+      messages: [],
+    });
+    mockPrisma.office.findMany.mockResolvedValue([
+      {
+        id: "office-tiznit",
+        sourceId: 1,
+        isActive: true,
+        level: "إقليمي",
+        name: "المكتب الإقليمي لـ تيزنيت",
+        region: "سوس ماسة",
+        province: "تيزنيت",
+        parentOffice: "",
+        secretary: "هشام الكرطيط",
+        secretaryPhone: "0666469305",
+        treasurer: "المدني الذهبي",
+        treasurerPhone: "0668699235",
+      },
+    ]);
+
+    const { chat } = await import("@/lib/ai/engine");
+    const response = await chat("conv-1", "نعم");
+
+    expect(response).toContain("هشام الكرطيط");
+    expect(response).not.toContain("تذكرتك");
+    expect(mockPrisma.conversation.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ metadata: expect.objectContaining({ pendingOfficeCandidate: null, pendingTicket: null }) }),
+    }));
   });
 
   it("should call OpenAI with correct parameters", async () => {

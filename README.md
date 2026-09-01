@@ -127,6 +127,42 @@ Every customer gets a unified profile across all channels -- conversations, note
 
 Train your AI with your business information. Organize entries into categories, set priorities, and test responses before going live.
 
+You can also import a PDF document (for example a status/policy file) directly into the knowledge base as chunked entries:
+
+```bash
+# Dry run (preview extracted chunks)
+npm run kb:import-pdf -- --file ./imports/statut.pdf --category "Statuts" --dry-run
+
+# Real import + embedding index generation (if AI key is configured)
+npm run kb:import-pdf -- --file ./imports/statut.pdf --category "Statuts" --priority 8
+```
+
+Useful options:
+
+- `--chunk-size 1800` to control entry size
+- `--title-prefix "Statut 2026"` to customize generated entry titles
+- `--no-embed` to skip embedding generation
+
+### Backups
+
+Create a timestamped backup of the PostgreSQL database, imports, configuration, and WhatsApp session:
+
+```bash
+npm run backup
+```
+
+Backups are stored in `./backups/`; the 14 most recent archives are retained. To restore one, run:
+
+```bash
+npm run restore -- ./backups/owly-YYYYMMDDTHHMMSSZ.tar.gz
+```
+
+Restore requires typing `RESTORE` and replaces the current database contents. For daily backups on the Docker host:
+
+```cron
+0 3 * * * /root/owly/scripts/backup.sh >> /var/log/owly-backup.log 2>&1
+```
+
 <table>
   <tr>
     <td width="50%">

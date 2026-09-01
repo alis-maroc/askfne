@@ -20,7 +20,7 @@ const TONE_OPTIONS = [
 
 const PROVIDER_OPTIONS = [
   { value: "openai", label: "OpenAI", models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"] },
-  { value: "claude", label: "Claude (Anthropic)", models: ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"] },
+  { value: "claude", label: "Claude (Anthropic)", models: ["claude-sonnet-5", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"] },
   { value: "ollama", label: "Ollama (Local)", models: ["llama3", "mistral", "codellama", "phi3"] },
 ];
 
@@ -175,9 +175,9 @@ export default function SetupPage() {
       {/* Header */}
       <div className="bg-owly-primary-50 border-b border-owly-border px-8 pt-6 pb-4">
         <div className="flex items-center gap-3 mb-5">
-          <Image src="/owly.png" alt="Owly" width={40} height={40} />
+          <Image src="/owly.png" alt="FNE" width={40} height={40} />
           <div>
-            <h1 className="text-lg font-bold text-owly-text">Set Up Owly</h1>
+            <h1 className="text-lg font-bold text-owly-text">إعداد منصة FNE</h1>
             <p className="text-xs text-owly-text-light">
               Step {step + 1} of {STEPS.length}
             </p>
@@ -256,7 +256,7 @@ export default function SetupPage() {
         {step === 1 && (
           <>
             <p className="text-sm text-owly-text-light mb-6">
-              Tell us about your business so Owly can represent you.
+              Tell us about your organization so the assistant can represent you.
             </p>
             <div className="space-y-4">
               <Field
@@ -417,7 +417,7 @@ export default function SetupPage() {
         {step === 3 && (
           <>
             <p className="text-sm text-owly-text-light mb-6">
-              Your Owly instance is ready to go.
+              Your instance is ready to go.
             </p>
             <div className="space-y-3 mb-6">
               <SummaryRow
@@ -483,7 +483,7 @@ export default function SetupPage() {
         ) : (
           <button
             type="button"
-            onClick={() => router.replace("/")}
+            onClick={() => window.location.href = "/"}
             className="rounded-lg bg-owly-primary px-5 py-2 text-sm font-semibold text-white hover:bg-owly-primary-dark focus:outline-none focus:ring-2 focus:ring-owly-primary focus:ring-offset-2 transition-colors"
           >
             Go to Dashboard

@@ -12,11 +12,13 @@ export function maskSecret(value: string | null | undefined): string {
  */
 export const SECRET_FIELDS = [
   "aiApiKey",
+  "aiApiKeySecondary",
   "smtpPass",
   "imapPass",
   "twilioToken",
   "elevenLabsKey",
   "whatsappApiKey",
+  "fallbackApiKey",
 ] as const;
 
 /**

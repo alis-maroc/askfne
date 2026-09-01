@@ -19,6 +19,10 @@ model Settings {
   aiProvider      String   @default("openai")
   aiModel         String   @default("gpt-4o-mini")
   aiApiKey        String   @default("")
+  aiApiKeySecondary String  @default("")
+  fallbackProvider  String   @default("")
+  fallbackModel     String   @default("")
+  fallbackApiKey    String   @default("")
   maxTokens       Int      @default(2048)
   temperature     Float    @default(0.7)
   elevenLabsKey   String   @default("")
@@ -67,6 +71,50 @@ model Category {
   entries     KnowledgeEntry[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+}
+
+model Office {
+  id              String   @id @default(uuid())
+  sourceId        Int      @unique
+  level           String
+  name            String
+  region          String   @default("")
+  province        String   @default("")
+  parentOffice    String   @default("")
+  secretary      String   @default("")
+  secretaryPhone String   @default("")
+  treasurer      String   @default("")
+  treasurerPhone String   @default("")
+  foundedAt      String   @default("")
+  renewalAt      String   @default("")
+  renewalDuration String  @default("")
+  sourceUpdatedAt String  @default("")
+  sourceUrl      String
+  isActive       Boolean  @default(true)
+  squeletteVille String?  // Consonantal skeleton of city/province name for robust matching
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([level])
+  @@index([region])
+  @@index([province])
+  @@index([isActive])
+  @@index([squeletteVille])
+}
+
+model CannedResponse {
+  id         String   @id @default(uuid())
+  title      String
+  content    String
+  category   String   @default("General")
+  shortcut   String   @default("")
+  isActive   Boolean  @default(true)
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
 }
 
 model KnowledgeEntry {
@@ -173,12 +221,14 @@ model Ticket {
   status         String        @default("open")
   priority       String        @default("medium")
   resolution     String        @default("")
+  type           String        @default("ticket") // "ticket" | "suggestion"
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@index([status])
   @@index([departmentId])
   @@index([assignedToId])
+  @@index([type])
 }
 
 // ==================== TAGS ====================
@@ -310,20 +360,6 @@ model SLARule {
   updatedAt         DateTime @updatedAt
 }
 
-// ==================== CANNED RESPONSES ====================
-
-model CannedResponse {
-  id        String   @id @default(uuid())
-  title     String
-  content   String
-  category  String   @default("General")
-  shortcut  String   @default("") // e.g., /greeting, /refund
-  isActive  Boolean  @default(true)
-  usageCount Int     @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 // ==================== CUSTOMERS ====================
 
 model Customer {
@@ -448,3 +484,90 @@ model Flow {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// ==================== WHATSAPP MESSAGE DEDUP ====================
+// Cross-worker deduplication table to ensure only one Next.js worker
+// processes each incoming WhatsApp message.
+
+model WaMsgDedup {
+  key        String   @id
+  expiresAt  DateTime
+
+  @@map("wa_msg_dedup")
+}
+
+// ==================== MESSAGE FEEDBACK ====================
+// Stores user feedback (👍/👎) collected across all channels.
+// Used in the Dashboard to identify weak answers and improve the knowledge base.
+
+model MessageFeedback {
+  id             String   @id @default(uuid())
+  channel        String   // "whatsapp" | "telegram" | "webchat"
+  conversationId String?  // linked Conversation.id if available
+  messageId      String?  // external message id (WA msg id, Telegram msg id)
+  question       String   @default("") // the user question that triggered this response
+  rating         String   // "positive" | "negative"
+  reviewed       Boolean  @default(false) // marked as reviewed by admin
+  createdAt      DateTime @default(now())
+
+  @@index([channel])
+  @@index([rating])
+  @@index([reviewed])
+  @@index([createdAt])
+}
+
+// ==================== WHATSAPP GROUP WATCH ====================
+// Captures messages from monitored WhatsApp groups in Silent Watch Mode.
+// Used in Dashboard to detect emerging topics, FAQs, and grassroots concerns.
+
+model GroupWatchMessage {
+  id            String   @id @default(uuid())
+  groupJid      String
+  groupName     String   @default("")
+  senderName    String   @default("")
+  senderJid     String   @default("")
+  content       String
+  isQuestion    Boolean  @default(false)
+  topic         String   @default("عام")
+  keywords      String[] @default([])
+  sentiment     String   @default("neutral")
+  starred       Boolean  @default(false)
+  convertedToKb Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([groupJid])
+  @@index([isQuestion])
+  @@index([topic])
+  @@index([createdAt])
+}
+
+// ==================== ADMINISTRATIVE REQUESTS ====================
+// Stores administrative letters and requests generated by the chatbot wizard.
+// Each request is linked to a conversation and can be printed or escalated to a ticket.
+
+model AdministrativeRequest {
+  id             String   @id @default(uuid())
+  conversationId String?  // linked Conversation.id
+  channel        String   // whatsapp | telegram | webchat
+  type           String   // ta3n_admin | ta3n_movement | demande_docs | conge_maladie | conge_naissance | taklif | libre
+  recipientLevel String   @default("province") // province | academie | ministere | member
+  fullName       String   @default("")
+  grade          String   @default("")
+  school         String   @default("")
+  province       String   @default("")
+  subject        String   @default("") // the user's stated issue / objet
+  extraData      Json     @default("{}") // any additional fields by type
+  generatedText  String   // the full generated Arabic letter text
+  printToken     String   @unique // random token for the public print URL
+  status         String   @default("generated") // generated | printed | escalated | closed
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([channel])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@index([conversationId])
+}
+
+

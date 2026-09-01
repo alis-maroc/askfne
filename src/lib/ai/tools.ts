@@ -180,10 +180,84 @@ export async function executeToolCall(
   }
 }
 
+export function isTicketConfirmation(message: string): boolean {
+  const normalized = message.trim().toLowerCase().replace(/[!.،؟?]+$/g, "");
+  return [
+    "yes", "y", "oui", "ok", "okay", "daccord", "d accord", "confirme", "confirmer",
+    "نعم", "ايه", "أيه", "واخا", "موافق", "أكد", "اكد", "صافي", "اه", "آه",
+  ].includes(normalized);
+}
+
+export async function confirmPendingTicket(conversationId: string): Promise<string | null> {
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { metadata: true },
+  });
+  const metadata = (conversation?.metadata ?? {}) as Record<string, unknown>;
+  const pendingTicket = metadata.pendingTicket;
+  if (!pendingTicket || typeof pendingTicket !== "object") return null;
+
+  const result = await createTicket(
+    { ...(pendingTicket as Record<string, unknown>), confirmed: true },
+    conversationId,
+  );
+  const parsed = JSON.parse(result) as { message?: string };
+  return parsed.message || "تم إنشاء التذكرة بنجاح.";
+}
+
 async function createTicket(
   args: Record<string, unknown>,
   conversationId?: string
 ): Promise<string> {
+  const title = String(args.title || args.issue_title || "Demande client").trim();
+  const description = String(args.description || args.issue_description || "").trim();
+  const priority = String(args.priority || "medium").toLowerCase();
+
+  if (!description) {
+    return JSON.stringify({ success: false, message: "Ticket description is required." });
+  }
+
+  if (conversationId && args.confirmed !== true) {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { metadata: true },
+    });
+    const metadata = (conversation?.metadata ?? {}) as Record<string, unknown>;
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        metadata: {
+          ...metadata,
+          pendingTicket: { title, description, priority, department: args.department || "" },
+        },
+      },
+    });
+    return JSON.stringify({
+      success: false,
+      pendingConfirmation: true,
+      message: `قبل إنشاء التذكرة، هل أؤكد طلبك؟\nالعنوان: ${title}\nالأولوية: ${priority}\nأجب بنعم أو لا.`,
+    });
+  }
+
+  if (conversationId) {
+    const existing = await prisma.ticket.findFirst({
+      where: {
+        conversationId,
+        status: { in: ["open", "in_progress"] },
+        description,
+      },
+      select: { id: true, title: true },
+    });
+    if (existing) {
+      return JSON.stringify({
+        success: true,
+        duplicate: true,
+        ticketId: existing.id,
+        message: `Existing ticket reused: ${existing.title}`,
+      });
+    }
+  }
+
   const department = args.department
     ? await prisma.department.findFirst({
         where: {
@@ -194,18 +268,31 @@ async function createTicket(
 
   const ticket = await prisma.ticket.create({
     data: {
-      title: args.title as string,
-      description: args.description as string,
-      priority: (args.priority as string) || "medium",
+      title,
+      description,
+      priority: ["low", "medium", "high", "urgent"].includes(priority) ? priority : "medium",
       conversationId: conversationId || null,
       departmentId: department?.id || null,
     },
   });
 
+  if (conversationId) {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { metadata: true },
+    });
+    const metadata = (conversation?.metadata ?? {}) as Record<string, unknown>;
+    delete metadata.pendingTicket;
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { metadata: JSON.parse(JSON.stringify(metadata)) },
+    });
+  }
+
   return JSON.stringify({
     success: true,
     ticketId: ticket.id,
-    message: `Ticket created: ${ticket.title} (Priority: ${ticket.priority})`,
+    message: `تفتحات التذكرة بنجاح: ${ticket.title}\nرقم التذكرة: ${ticket.id}\nالأولوية: ${ticket.priority === "urgent" ? "مستعجلة" : ticket.priority === "high" ? "عالية" : ticket.priority === "low" ? "منخفضة" : "متوسطة"}.`,
   });
 }
 

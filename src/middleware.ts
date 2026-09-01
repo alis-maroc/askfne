@@ -15,16 +15,21 @@ const SECURITY_HEADERS: Record<string, string> = {
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "";
 
 function generateRequestId(): string {
-  return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
 
 function addHeaders(
   response: NextResponse,
   requestId: string,
-  rateLimit?: { limit: number; remaining: number; resetAt: number }
+  rateLimit?: { limit: number; remaining: number; resetAt: number },
+  pathname?: string
 ): NextResponse {
   // Security headers
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    // Allow embedding web-chat in iframes for WordPress and external sites
+    if (key === "X-Frame-Options" && pathname?.startsWith("/web-chat")) {
+      continue;
+    }
     response.headers.set(key, value);
   }
 
@@ -38,8 +43,16 @@ function addHeaders(
     response.headers.set("X-RateLimit-Reset", String(Math.ceil(rateLimit.resetAt / 1000)));
   }
 
-  // CORS
-  if (CORS_ORIGIN) {
+  // CORS: allow embedding widget.js, web-chat, and public chat from any domain (e.g. WordPress)
+  if (
+    pathname?.endsWith(".js") ||
+    pathname?.startsWith("/web-chat") ||
+    pathname?.startsWith("/api/chat")
+  ) {
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response.headers.set("Access-Control-Allow-Headers", "Content-Type, X-Request-Id");
+  } else if (CORS_ORIGIN) {
     response.headers.set("Access-Control-Allow-Origin", CORS_ORIGIN);
     response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Request-Id");
@@ -67,26 +80,63 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname.endsWith(".png") ||
+    pathname.endsWith(".jpg") ||
+    pathname.endsWith(".jpeg") ||
+    pathname.endsWith(".webp") ||
     pathname.endsWith(".svg") ||
-    pathname.endsWith(".ico")
+    pathname.endsWith(".ico") ||
+    pathname.endsWith(".pdf") ||
+    pathname.endsWith(".html") ||
+    pathname.endsWith(".js")
   ) {
-    return NextResponse.next();
+    const res = NextResponse.next();
+    if (pathname.endsWith(".js")) {
+      res.headers.set("Access-Control-Allow-Origin", "*");
+      res.headers.set("Cache-Control", "public, max-age=3600");
+    }
+    return res;
   }
 
   // CORS preflight
-  if (request.method === "OPTIONS" && CORS_ORIGIN) {
-    return addHeaders(new NextResponse(null, { status: 204 }), requestId);
+  if (request.method === "OPTIONS") {
+    const preflight = new NextResponse(null, { status: 204 });
+    return addHeaders(preflight, requestId, undefined, pathname);
   }
 
   // Public paths that don't require auth
-  const publicPaths = ["/login", "/setup", "/api/auth", "/api/health", "/api/openapi.json"];
+  const shareToken = request.nextUrl.searchParams.get("share");
+  const isWhatsAppShare = pathname === "/whatsapp-share" &&
+    Boolean(shareToken) && shareToken === process.env.WHATSAPP_SHARE_TOKEN;
+  const isWhatsAppShareApi = pathname === "/api/channels/whatsapp" &&
+    Boolean(shareToken) && shareToken === process.env.WHATSAPP_SHARE_TOKEN;
+  const publicPaths = [
+    "/login",
+    "/setup",
+    "/web-chat",
+    "/widget.js",
+    "/api/auth",
+    "/api/chat",
+    "/api/health",
+    "/api/feedback",
+    "/api/openapi.json",
+    "/requests/print",
+    "/api/requests/token",
+    "/api/requests/pdf",
+    "/wa",
+    "/whatsapp",
+    "/chat",
+    "/poster",
+    "/affiche",
+    "/guide",
+  ];
   const isPublic = publicPaths.some((p) => pathname.startsWith(p));
 
   // Channel webhook endpoints (authenticated via provider signatures, not JWT)
   if (
     pathname.startsWith("/api/channels/phone/") ||
     pathname.startsWith("/api/channels/sms") ||
-    pathname.startsWith("/api/channels/telegram")
+    pathname.startsWith("/api/channels/telegram") ||
+    pathname.startsWith("/api/channels/whatsapp/webhook")
   ) {
     return addHeaders(NextResponse.next(), requestId);
   }
@@ -112,7 +162,57 @@ export function middleware(request: NextRequest) {
     });
   }
 
+  // Rate limiting for AI Chat endpoint (15 requests/min per IP to protect LLM quota & prevent abuse)
+  if (pathname.startsWith("/api/chat")) {
+    const ip = getClientIp(request);
+    const rateResult = checkRateLimit(`chat:${ip}`, RATE_LIMITS.chat);
+
+    if (!rateResult.allowed) {
+      const response = NextResponse.json(
+        {
+          error: {
+            code: "RATE_LIMIT_EXCEEDED",
+            message: "لقد أرسلت عدة رسائل في وقت وجيز. يرجى الانتظار بضع ثوانٍ قبل إرسال رسالة جديدة.",
+            requestId,
+          },
+        },
+        { status: 429 }
+      );
+      response.headers.set("Retry-After", String(Math.ceil((rateResult.resetAt - Date.now()) / 1000)));
+      return addHeaders(response, requestId, {
+        limit: RATE_LIMITS.chat.maxRequests,
+        remaining: 0,
+        resetAt: rateResult.resetAt,
+      });
+    }
+
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "no-store, max-age=0");
+    return addHeaders(
+      response,
+      requestId,
+      {
+        limit: RATE_LIMITS.chat.maxRequests,
+        remaining: rateResult.remaining,
+        resetAt: rateResult.resetAt,
+      },
+      pathname
+    );
+  }
+
   if (isPublic) {
+    const response = NextResponse.next();
+    if (pathname === "/web-chat") {
+      response.headers.set("Cache-Control", "no-store, max-age=0");
+    }
+    return addHeaders(response, requestId, undefined, pathname);
+  }
+
+  if (isWhatsAppShare) {
+    return addHeaders(NextResponse.next(), requestId);
+  }
+
+  if (isWhatsAppShareApi) {
     return addHeaders(NextResponse.next(), requestId);
   }
 

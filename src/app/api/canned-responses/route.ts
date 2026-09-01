@@ -16,7 +16,10 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = {};
 
     if (category && category !== "all") {
-      where.category = category;
+      where.OR = [
+        { category },
+        { category: "General" },
+      ];
     }
 
     const [responses, total] = await Promise.all([

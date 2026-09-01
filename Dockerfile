@@ -9,7 +9,10 @@ RUN npm ci
 COPY . .
 
 RUN npx prisma generate
+ENV JWT_SECRET="build_placeholder_secret"
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
+RUN cp node_modules/pdf-parse/dist/pdf-parse/esm/pdf.worker.mjs .next/server/chunks/pdf.worker.mjs
 
 # ---- Runner stage ----
 FROM node:22-slim AS runner
@@ -17,36 +20,32 @@ FROM node:22-slim AS runner
 LABEL org.opencontainers.image.source="https://github.com/Hesper-Labs/owly"
 LABEL org.opencontainers.image.description="AI-powered customer support agent"
 
-RUN apt-get update && apt-get install -y \
+# poppler-utils (PDF text + pdftoppm for OCR), tesseract-ocr (OCR engine for scanned PDFs),
+# tesseract-ocr-ara (Arabic language data) + tesseract-ocr-fra (French — MEN docs are bilingual),
+# fonts-kacst (KACST Arabic fonts for proper rendering), postgresql-client-16
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-ara \
+    tesseract-ocr-fra \
     chromium \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
-    --no-install-recommends \
+    fonts-kacst \
+    fonts-noto \
+    curl \
+    ca-certificates \
+    gnupg \
+    && install -d /etc/apt/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && apt-get purge -y --auto-remove gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV PORT=3000
-
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+ENV WEB_CONCURRENCY=1
 
 WORKDIR /app
 
@@ -55,16 +54,14 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/src/generated ./src/generated
 COPY --from=builder /app/next.config.ts ./
 
-RUN chown -R nextjs:nodejs /app
-
-USER nextjs
+RUN mkdir -p /app/.wwebjs_auth/baileys_auth
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD node -e "fetch('http://localhost:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3   CMD node -e "fetch('http://localhost:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
 
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+CMD ["sh", "-c", "mkdir -p /app/.wwebjs_auth/baileys_auth && npx prisma migrate deploy && npm start"]

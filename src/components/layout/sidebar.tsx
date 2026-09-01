@@ -22,8 +22,18 @@ import {
   Shield,
   FileCode,
   Webhook,
+  HelpCircle,
+  FileText,
   ChevronLeft,
   ChevronRight,
+  ThumbsUp,
+  Megaphone,
+  HardDrive,
+  Globe,
+  Eye,
+  FlaskConical,
+  Printer,
+  Lightbulb,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -45,6 +55,9 @@ const sections: NavSection[] = [
     title: "Knowledge",
     items: [
       { name: "Knowledge Base", href: "/knowledge", icon: BookOpen },
+      { name: "مختبر اختبار الذكاء (AI Lab) 🧪", href: "/ai-test", icon: FlaskConical },
+      { name: "دليل المجيب الآلي (PDF)", href: "/guide-fne-chatbot.pdf", icon: FileText },
+      { name: "Questions sans réponse", href: "/knowledge/unanswered", icon: HelpCircle },
       { name: "Canned Responses", href: "/canned-responses", icon: Zap },
       { name: "Automation", href: "/automation", icon: Workflow },
       { name: "Business Hours", href: "/business-hours", icon: Clock },
@@ -61,6 +74,8 @@ const sections: NavSection[] = [
     title: "Channels",
     items: [
       { name: "Channels", href: "/channels", icon: Radio },
+      { name: "Widget WordPress 💬", href: "/channels/widget", icon: Globe },
+      { name: "Diffusion / Campagnes 📢", href: "/campaigns", icon: Megaphone },
       { name: "Webhooks", href: "/webhooks", icon: Webhook },
     ],
   },
@@ -68,6 +83,10 @@ const sections: NavSection[] = [
     title: "Insights",
     items: [
       { name: "Analytics", href: "/analytics", icon: BarChart3 },
+      { name: "Veille Groupes WhatsApp 👥", href: "/whatsapp-watch", icon: Eye },
+      { name: "Feedback 👍👎", href: "/feedback", icon: ThumbsUp },
+      { name: "طلبات إدارية 📄", href: "/admin-requests", icon: Printer },
+      { name: "ملاحظات واقتراحات 💡", href: "/suggestions", icon: Lightbulb },
       { name: "Activity Log", href: "/activity", icon: ScrollText },
     ],
   },
@@ -75,6 +94,7 @@ const sections: NavSection[] = [
     title: "System",
     items: [
       { name: "Administration", href: "/admin", icon: Shield },
+      { name: "Sauvegardes 💾", href: "/admin/backups", icon: HardDrive },
       { name: "API Docs", href: "/api-docs", icon: FileCode },
       { name: "Settings", href: "/settings", icon: Settings },
     ],
@@ -94,16 +114,17 @@ export function Sidebar() {
     >
       <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10">
         <Image
-          src="/owly.png"
-          alt="Owly"
+          src="/logo_fne.gif"
+          alt="FNE"
           width={32}
           height={32}
-          className="rounded-lg flex-shrink-0"
+          unoptimized
+          className="rounded-lg flex-shrink-0 object-contain bg-white/10 p-0.5"
         />
         {!collapsed && (
           <div className="overflow-hidden">
-            <h1 className="text-base font-bold tracking-tight">Owly</h1>
-            <p className="text-[10px] text-white/50">AI Customer Support</p>
+            <h1 className="text-base font-bold tracking-tight">FNE</h1>
+            <p className="text-[10px] text-white/50">المساعد الذكي</p>
           </div>
         )}
       </div>
@@ -125,10 +146,14 @@ export function Sidebar() {
                   pathname === item.href ||
                   (item.href !== "/" && pathname.startsWith(item.href));
 
+                const isExternal = item.href.endsWith(".pdf") || item.href.endsWith(".html") || item.href.startsWith("http");
+
                 return (
                   <Link
                     key={item.name}
                     href={item.href}
+                    target={isExternal ? "_blank" : undefined}
+                    rel={isExternal ? "noopener noreferrer" : undefined}
                     className={cn(
                       "flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors",
                       isActive

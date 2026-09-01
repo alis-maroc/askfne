@@ -73,15 +73,20 @@ function cosineSimilarity(a: number[], b: number[]): number {
  * Keyword-based search fallback.
  */
 function keywordScore(query: string, text: string): number {
-  const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-  const textLower = text.toLowerCase();
-  let matches = 0;
+  const normQuery = query.toLowerCase().replace(/[\u064B-\u065F\u0670]/g, "").trim();
+  const normText = text.toLowerCase().replace(/[\u064B-\u065F\u0670]/g, "");
 
+  if (normQuery.length > 5 && (normText.includes(normQuery) || normQuery.includes(normText))) return 1.0;
+
+  const queryWords = normQuery.split(/\s+/).filter((w) => w.length >= 3);
+  if (queryWords.length === 0) return 0;
+
+  let matches = 0;
   for (const word of queryWords) {
-    if (textLower.includes(word)) matches++;
+    if (normText.includes(word)) matches++;
   }
 
-  return queryWords.length > 0 ? matches / queryWords.length : 0;
+  return matches / queryWords.length;
 }
 
 /**
@@ -99,14 +104,15 @@ export async function searchKnowledgeBase(
 
   if (entries.length === 0) return [];
 
-  // Try to get API key for embeddings
+  // Try to get API key for embeddings (only if provider is OpenAI)
   const settings = await prisma.settings.findFirst({
-    select: { aiApiKey: true },
+    select: { aiApiKey: true, aiProvider: true },
   });
 
   let results: SearchResult[];
+  const isOpenAI = settings?.aiProvider === "openai" && Boolean(settings?.aiApiKey?.startsWith("sk-"));
 
-  if (settings?.aiApiKey) {
+  if (isOpenAI && settings?.aiApiKey) {
     // Try semantic search with embeddings
     const cacheKey = `embedding:${Buffer.from(query).toString("base64").substring(0, 50)}`;
     let queryEmbedding: number[] | null = null;

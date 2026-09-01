@@ -17,6 +17,9 @@ import {
   XCircle,
   Eye,
   EyeOff,
+  Send,
+  Globe,
+  Copy,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -31,6 +34,7 @@ interface ChannelData {
   isActive: boolean;
   config: Record<string, unknown>;
   status: string;
+  tokenConfigured?: boolean;
 }
 
 type WhatsAppMode = "web" | "api";
@@ -149,22 +153,24 @@ function WhatsAppCard({
 }: {
   channel: ChannelData;
   onSave: (type: string, config: Record<string, unknown>, isActive: boolean) => void;
-  onAction: (type: string, action: string) => void;
+  onAction: (type: string, action: string, payload?: Record<string, unknown>) => void;
   saving: boolean;
 }) {
-  const cfg = channel.config as Record<string, string>;
+  const cfg = (channel.config || {}) as Record<string, string>;
   const [isActive, setIsActive] = useState(channel.isActive);
   const [mode, setMode] = useState<WhatsAppMode>(
-    (cfg.mode as WhatsAppMode) || "web"
+    (cfg.mode as WhatsAppMode) || "api"
   );
-  const [apiKey, setApiKey] = useState(cfg.apiKey || "");
+  const [apiKey, setApiKey] = useState(cfg.apiKey || cfg.accessToken || "");
+  const [phoneNumberId, setPhoneNumberId] = useState(cfg.phoneNumberId || cfg.phoneId || "");
+  const [verifyToken, setVerifyToken] = useState(cfg.verifyToken || "owly_webhook_secret");
   const [phoneNumber, setPhoneNumber] = useState(cfg.phoneNumber || "");
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [copied, setCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isConnected = channel.status === "connected";
 
-  // Poll WhatsApp status while connecting to get QR code updates
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -184,7 +190,6 @@ function WhatsAppCard({
         const data = await res.json();
         if (data.qr) setQrCode(data.qr);
       }
-      // Start polling for QR code / status updates
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
         try {
@@ -198,11 +203,21 @@ function WhatsAppCard({
               onAction("whatsapp", "connect");
             }
           }
-        } catch { /* ignore polling errors */ }
-      }, 3000);
+        } catch {}
+      }, 2000);
     } catch {
       setConnecting(false);
     }
+  };
+
+  const webhookUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/api/channels/whatsapp/webhook`
+    : "http://158.69.24.123:3000/api/channels/whatsapp/webhook";
+
+  const copyWebhook = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -217,7 +232,7 @@ function WhatsAppCard({
             <div>
               <h3 className="font-semibold text-owly-text">WhatsApp</h3>
               <p className="text-xs text-owly-text-light mt-0.5">
-                Messaging via WhatsApp Web or API
+                Messaging via WhatsApp Cloud API (Meta) or Web QR
               </p>
             </div>
           </div>
@@ -230,6 +245,148 @@ function WhatsAppCard({
 
       {/* Body */}
       <div className="p-5 space-y-4">
+        {/* Smart Permanent Redirect & Dynamic Poster Management */}
+        <div className="p-4 bg-gradient-to-br from-amber-500/10 via-red-500/5 to-slate-50 border border-amber-300/60 rounded-xl space-y-3 text-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-bold text-amber-900 text-sm">
+              <span>🎯 الرابط الذكي الدائم والملصق التعريفي (Smart Anti-Block Link)</span>
+            </div>
+            <a
+              href="/affiche.html"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700 transition-colors shadow-sm text-xs"
+            >
+              📄 عرض الملصق الرسمي (Affiche)
+            </a>
+          </div>
+
+          <p className="text-slate-600 leading-relaxed">
+            لحماية منشوراتكم وملصقاتكم المطبوعة من خطر حظر الرقم، يقوم الرابط والـ QR Code الدائم 
+            <strong className="text-amber-900 mx-1 font-mono">Hub.taalim.org/Bot</strong>
+            بالتحويل الفوري والتلقائي إلى رقم الواتساب النشط المحدد أدناه. في حال تغيير الرقم مستقبلاً، يكفي تعديله هنا ليتم تحديث وجهة جميع الملصقات السابقة فوراً!
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-700">
+                📱 رقم الواتساب النشط للتحويل الفوري (مع رمز الدولة) :
+              </label>
+              <input
+                type="text"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="212669305883"
+                className="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/40 text-slate-900"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-700">
+                🔗 الرابط الدائم الموحد للطباعة والنشر :
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value="https://Hub.taalim.org/Bot"
+                  className="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-100 border border-slate-300 rounded-lg text-slate-800 select-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText("https://Hub.taalim.org/Bot");
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="px-3 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 text-xs shrink-0"
+                >
+                  {copied ? "✓ تم" : "نسخ"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-amber-200/80 space-y-2">
+            <span className="font-bold text-slate-800 text-[11px] block">
+              📥 تحميل واستعراض جميع المواد الرسمية الجاهزة للنشر والطباعة :
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <a
+                href="/affiche-fne-chatbot.pdf"
+                download="affiche-fne-chatbot.pdf"
+                className="flex items-center gap-2 p-2 bg-white hover:bg-red-50 border border-red-200 rounded-lg text-red-800 font-bold transition-all shadow-xs"
+              >
+                <span className="text-base">📄</span>
+                <div>
+                  <div className="text-[11px]">الملصق الكامل (PDF)</div>
+                  <div className="text-[9px] text-slate-500 font-normal">جاهز للطباعة بدقة A4 عالية</div>
+                </div>
+              </a>
+
+              <a
+                href="/affiche-fne-chatbot.png"
+                download="affiche-fne-chatbot.png"
+                className="flex items-center gap-2 p-2 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg text-blue-800 font-bold transition-all shadow-xs"
+              >
+                <span className="text-base">🖼️</span>
+                <div>
+                  <div className="text-[11px]">الملصق الكامل (صورة PNG)</div>
+                  <div className="text-[9px] text-slate-500 font-normal">للنشر على فيسبوك والمجموعات</div>
+                </div>
+              </a>
+
+              <a
+                href="/fne-services-guide.png"
+                download="fne-services-guide.png"
+                className="flex items-center gap-2 p-2 bg-white hover:bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 font-bold transition-all shadow-xs"
+              >
+                <span className="text-base">📋</span>
+                <div>
+                  <div className="text-[11px]">دليل الخدمات الـ 6 (صورة منفصلة)</div>
+                  <div className="text-[9px] text-slate-500 font-normal">الجزء العلوي للخدمات</div>
+                </div>
+              </a>
+
+              <a
+                href="/fne-bot-direct-access.png"
+                download="fne-bot-direct-access.png"
+                className="flex items-center gap-2 p-2 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg text-purple-800 font-bold transition-all shadow-xs"
+              >
+                <span className="text-base">🤖</span>
+                <div>
+                  <div className="text-[11px]">بطاقة المجيب والـ QR (صورة منفصلة)</div>
+                  <div className="text-[9px] text-slate-500 font-normal">الجزء السفلي للاتصال المباشر</div>
+                </div>
+              </a>
+
+              <a
+                href="/qr_fne_wa.png"
+                download="qr_fne_wa.png"
+                className="flex items-center gap-2 p-2 bg-white hover:bg-teal-50 border border-teal-200 rounded-lg text-teal-800 font-bold transition-all shadow-xs"
+              >
+                <span className="text-base">📱</span>
+                <div>
+                  <div className="text-[11px]">رمز QR Code عالي الدقة</div>
+                  <div className="text-[9px] text-slate-500 font-normal">Hub.taalim.org/Bot</div>
+                </div>
+              </a>
+
+              <a
+                href="/guide-reinstallation-fne-serveur.pdf"
+                download="guide-reinstallation-fne-serveur.pdf"
+                className="flex items-center gap-2 p-2 bg-white hover:bg-amber-50 border border-amber-300 rounded-lg text-amber-900 font-bold transition-all shadow-xs"
+              >
+                <span className="text-base">🛠️</span>
+                <div>
+                  <div className="text-[11px]">دليل إعادة تثبيت السيرفر (PDF)</div>
+                  <div className="text-[9px] text-slate-500 font-normal">خطة الطوارئ والاسترجاع</div>
+                </div>
+              </a>
+            </div>
+          </div>
+        </div>
+
         {/* Mode selector */}
         <div>
           <label className="block text-xs font-medium text-owly-text-light mb-2">
@@ -238,34 +395,94 @@ function WhatsAppCard({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setMode("web")}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
-                mode === "web"
-                  ? "border-green-300 bg-green-50 text-green-700"
-                  : "border-owly-border bg-owly-bg text-owly-text-light hover:bg-owly-primary-50 hover:text-owly-text"
-              )}
-            >
-              <QrCode className="h-4 w-4" />
-              WhatsApp Web
-            </button>
-            <button
-              type="button"
               onClick={() => setMode("api")}
               className={cn(
                 "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
                 mode === "api"
-                  ? "border-green-300 bg-green-50 text-green-700"
+                  ? "border-green-300 bg-green-50 text-green-700 font-semibold"
                   : "border-owly-border bg-owly-bg text-owly-text-light hover:bg-owly-primary-50 hover:text-owly-text"
               )}
             >
               <Key className="h-4 w-4" />
-              API
+              WhatsApp Cloud API (Meta)
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("web")}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
+                mode === "web"
+                  ? "border-green-300 bg-green-50 text-green-700 font-semibold"
+                  : "border-owly-border bg-owly-bg text-owly-text-light hover:bg-owly-primary-50 hover:text-owly-text"
+              )}
+            >
+              <QrCode className="h-4 w-4" />
+              WhatsApp Web (QR)
             </button>
           </div>
         </div>
 
-        {mode === "web" ? (
+        {mode === "api" ? (
+          <div className="space-y-4">
+            <FieldInput
+              label="Meta Access Token (API Key)"
+              value={apiKey}
+              onChange={setApiKey}
+              placeholder="EAATcmstikgIBSWdVhDCT8xgEiZBEEhxQWFgL..."
+              isSecret
+            />
+
+            <FieldInput
+              label="Phone Number ID (ID de numéro Meta)"
+              value={phoneNumberId}
+              onChange={setPhoneNumberId}
+              placeholder="Ex: 105948329482910"
+            />
+
+            <FieldInput
+              label="Webhook Verify Token (Jeton de vérification)"
+              value={verifyToken}
+              onChange={setVerifyToken}
+              placeholder="owly_webhook_secret"
+            />
+
+            {/* Meta Webhook Configuration Box */}
+            <div className="p-3.5 bg-blue-50/60 border border-blue-200/80 rounded-lg space-y-2 text-xs">
+              <div className="font-semibold text-blue-900 flex items-center justify-between">
+                <span>📋 Configuration Webhook Meta :</span>
+                <button
+                  type="button"
+                  onClick={copyWebhook}
+                  className="text-blue-700 hover:text-blue-900 bg-blue-100 px-2 py-0.5 rounded font-medium text-[11px]"
+                >
+                  {copied ? "✓ Copié !" : "Copier l'URL"}
+                </button>
+              </div>
+              <div>
+                <span className="text-blue-800 font-medium">Callback URL :</span>
+                <code className="block bg-white p-2 mt-1 rounded border border-blue-200 text-blue-950 font-mono text-[11px] break-all select-all">
+                  {webhookUrl}
+                </code>
+              </div>
+              <div className="text-blue-800">
+                <span>Verify Token : </span>
+                <strong className="font-mono text-blue-950">{verifyToken || "owly_webhook_secret"}</strong>
+              </div>
+              <div className="text-blue-700 text-[11px] pt-1">
+                👉 Dans <strong>Meta Developers &gt; Configuration Webhook</strong>, collez cette URL et ce Jeton, puis cochez le champ <strong>messages</strong>.
+              </div>
+            </div>
+
+            {isConnected && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <span className="text-sm text-green-700 font-medium">
+                  WhatsApp Cloud API configuré et actif
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
           <div>
             {isConnected ? (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
@@ -275,11 +492,6 @@ function WhatsAppCard({
                     Session Active
                   </span>
                 </div>
-                {phoneNumber && (
-                  <p className="text-sm text-green-600">
-                    Phone: {phoneNumber}
-                  </p>
-                )}
                 <button
                   type="button"
                   onClick={() => onAction("whatsapp", "disconnect")}
@@ -303,17 +515,10 @@ function WhatsAppCard({
                   ) : (
                     <div className="text-center">
                       <QrCode className="h-10 w-10 text-owly-text-light/40 mx-auto mb-1" />
-                      <p className="text-xs text-owly-text-light/60">
-                        QR Code
-                      </p>
+                      <p className="text-xs text-owly-text-light/60">QR Code</p>
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-owly-text-light text-center max-w-[220px]">
-                  {qrCode
-                    ? "Scan this QR code with WhatsApp on your phone to connect"
-                    : "Click Connect to generate a QR code"}
-                </p>
                 <button
                   type="button"
                   onClick={handleConnect}
@@ -330,30 +535,6 @@ function WhatsAppCard({
               </div>
             )}
           </div>
-        ) : (
-          <div className="space-y-3">
-            <FieldInput
-              label="API Key"
-              value={apiKey}
-              onChange={setApiKey}
-              placeholder="Enter your WhatsApp API key"
-              isSecret
-            />
-            <FieldInput
-              label="Phone Number"
-              value={phoneNumber}
-              onChange={setPhoneNumber}
-              placeholder="+1234567890"
-            />
-            {isConnected && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm text-green-700">
-                  API connected - Phone: {phoneNumber || "N/A"}
-                </span>
-              </div>
-            )}
-          </div>
         )}
       </div>
 
@@ -365,7 +546,7 @@ function WhatsAppCard({
           onClick={() =>
             onSave(
               "whatsapp",
-              { mode, apiKey, phoneNumber },
+              { mode, apiKey, phoneNumberId, verifyToken, phoneNumber },
               isActive
             )
           }
@@ -383,9 +564,130 @@ function WhatsAppCard({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Email Card
-// ---------------------------------------------------------------------------
+function TelegramCard({
+  channel,
+  onSave,
+  onAction,
+  saving,
+}: {
+  channel: ChannelData;
+  onSave: (type: string, config: Record<string, unknown>, isActive: boolean) => void;
+  onAction: (type: string, action: string, payload?: Record<string, unknown>) => void;
+  saving: boolean;
+}) {
+  const cfg = (channel.config || {}) as Record<string, string>;
+  const [token, setToken] = useState("");
+  const [isActive, setIsActive] = useState(channel.isActive);
+  const [copied, setCopied] = useState(false);
+  const defaultWebhook = typeof window !== "undefined"
+    ? `${window.location.origin}/api/channels/telegram`
+    : "https://taalim.org/api/channels/telegram";
+  const [webhookUrl, setWebhookUrl] = useState(cfg.webhookUrl || defaultWebhook);
+  const tokenReady = Boolean(token.trim() || channel.tokenConfigured);
+
+  return (
+    <div className="bg-owly-surface rounded-xl border border-owly-border overflow-hidden shadow-sm flex flex-col justify-between">
+      <div>
+        <div className="px-5 py-4 border-b border-owly-border flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-lg bg-sky-50 text-sky-600">
+              <Send className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-owly-text">Telegram Bot</h3>
+              <p className="text-xs text-owly-text-light mt-0.5">
+                قناة المحادثة والمجيب الآلي على تيليغرام
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <StatusBadge status={channel.status} />
+            <Toggle enabled={isActive} onChange={setIsActive} />
+          </div>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* RTL Info Box */}
+          <div dir="rtl" className="p-3.5 bg-sky-50/70 border border-sky-200/80 rounded-xl text-xs text-sky-950 space-y-2">
+            <div className="flex items-center justify-between font-bold text-sky-900">
+              <span>🤖 البوت الرسمي على تيليغرام :</span>
+              <a
+                href="https://t.me/askfne_bot"
+                target="_blank"
+                rel="noreferrer"
+                className="bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors"
+              >
+                فتح البوت @askfne_bot ↗
+              </a>
+            </div>
+            <p className="text-sky-800 text-[11px] leading-relaxed">
+              المجيب الآلي متصل مباشرة بحساب البوت الرسمي <strong>@askfne_bot</strong>. يمكن للمستخدمين التواصل معه مباشرة لتوليد الطلبات وحساب النقط والاستشارات.
+            </p>
+          </div>
+
+          <FieldInput
+            label="Bot API Token (من BotFather)"
+            value={token}
+            onChange={setToken}
+            placeholder={channel.tokenConfigured ? "••••••••  (jeton déjà enregistré — laissez vide pour le conserver)" : "123456789:ABCdefGhIJKlmNoPQRstuVWXyz..."}
+            isSecret
+          />
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-owly-text-light">
+              Webhook URL (رابط استقبال الرسائل) :
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://votre-domaine.tld/api/channels/telegram"
+                className="flex-1 px-3 py-2 text-xs font-mono bg-owly-bg border border-owly-border rounded-lg text-owly-text"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(webhookUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-medium shrink-0"
+              >
+                {copied ? "✓ Copié" : "Copier"}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <button
+              type="button"
+              disabled={saving || !tokenReady}
+              onClick={() => onAction("telegram", "setup", { webhookUrl })}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-sky-700 bg-sky-100 hover:bg-sky-200 border border-sky-300 rounded-lg disabled:opacity-50 transition-colors"
+            >
+              🔄 تسجيل وتفعيل Webhook تيليغرام
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="px-5 py-3 border-t border-owly-border bg-owly-bg/50 flex justify-between items-center">
+        <span className="text-[11px] text-owly-text-light font-medium">Telegram Bot API v7+</span>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => onSave("telegram", { token: token.trim(), webhookUrl }, isActive)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg disabled:opacity-50 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Enregistrer
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function EmailCard({
   channel,
@@ -756,6 +1058,80 @@ function PhoneCard({
   );
 }
 
+function WebCard({
+  channel,
+  onSave,
+  saving,
+}: {
+  channel: ChannelData;
+  onSave: (type: string, config: Record<string, unknown>, isActive: boolean) => void;
+  saving: boolean;
+}) {
+  const [isActive, setIsActive] = useState(channel.isActive);
+  const [copied, setCopied] = useState(false);
+  const webChatUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/web-chat`
+    : "/web-chat";
+
+  const copyUrl = async () => {
+    await navigator.clipboard.writeText(webChatUrl);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="bg-owly-surface rounded-xl border border-owly-border overflow-hidden">
+      <div className="px-5 py-4 border-b border-owly-border">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-lg bg-sky-50 text-sky-600">
+              <Globe className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-owly-text">Web chat</h3>
+              <p className="text-xs text-owly-text-light mt-0.5">A public chat page for your website</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <StatusBadge status={isActive ? "connected" : "disconnected"} />
+            <Toggle enabled={isActive} onChange={setIsActive} />
+          </div>
+        </div>
+      </div>
+      <div className="p-5 space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-owly-text-light mb-1">Public chat URL</label>
+          <div className="flex gap-2">
+            <input
+              readOnly
+              value={webChatUrl}
+              className="min-w-0 flex-1 px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-bg text-owly-text"
+            />
+            <button
+              type="button"
+              title="Copy public chat URL"
+              onClick={copyUrl}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-owly-primary border border-owly-border rounded-lg hover:bg-owly-bg"
+            >
+              <Copy className="h-4 w-4" />
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => onSave("web", { publicPath: "/web-chat" }, isActive)}
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-owly-primary rounded-lg hover:bg-owly-primary/90 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save web channel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
@@ -784,7 +1160,7 @@ export default function ChannelsPage() {
       const res = await fetch("/api/channels");
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
-      setChannels(data);
+      setChannels(Array.isArray(data) ? data : data.data || []);
     } catch {
       setFetchError("Failed to load channels. Please try refreshing the page.");
       showToast("Failed to load channels", "error");
@@ -822,12 +1198,12 @@ export default function ChannelsPage() {
     }
   };
 
-  const handleAction = async (type: string, action: string) => {
+  const handleAction = async (type: string, action: string, payload: Record<string, unknown> = {}) => {
     try {
       const res = await fetch(`/api/channels/${type}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...payload }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -881,25 +1257,38 @@ export default function ChannelsPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl">
-            <WhatsAppCard
-              channel={getChannel("whatsapp")}
-              onSave={handleSave}
-              onAction={handleAction}
-              saving={saving}
-            />
-            <EmailCard
-              channel={getChannel("email")}
-              onSave={handleSave}
-              onAction={handleAction}
-              saving={saving}
-            />
-            <PhoneCard
-              channel={getChannel("phone")}
-              onSave={handleSave}
-              onAction={handleAction}
-              saving={saving}
-            />
+          <div className="space-y-6 max-w-7xl">
+            {/* Primary Channels: WhatsApp & Telegram */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              <WhatsAppCard
+                channel={getChannel("whatsapp")}
+                onSave={handleSave}
+                onAction={handleAction}
+                saving={saving}
+              />
+              <TelegramCard
+                channel={getChannel("telegram")}
+                onSave={handleSave}
+                onAction={handleAction}
+                saving={saving}
+              />
+            </div>
+
+            {/* Secondary Channels: Email & Phone */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              <EmailCard
+                channel={getChannel("email")}
+                onSave={handleSave}
+                onAction={handleAction}
+                saving={saving}
+              />
+              <PhoneCard
+                channel={getChannel("phone")}
+                onSave={handleSave}
+                onAction={handleAction}
+                saving={saving}
+              />
+            </div>
           </div>
         )}
       </div>

@@ -1,0 +1,2219 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="7200">
+    <title>عرض HTML مباشر للمكاتب</title>
+    <style>
+        :root {
+            --brand: #b22222;
+            --brand-dark: #7d1818;
+            --line: #dfe4ea;
+            --bg: #f6f8fb;
+            --text: #1f2937;
+            --muted: #6b7280;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Cairo", Tahoma, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .wrap {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        .head {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 14px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .title {
+            margin: 0;
+            font-size: 1.2rem;
+            color: var(--brand-dark);
+        }
+
+        .subtitle {
+            margin: 2px 0 0;
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: 1px solid var(--line);
+            background: #fff;
+            color: var(--text);
+            border-radius: 8px;
+            padding: 8px 12px;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .btn.primary {
+            background: var(--brand);
+            border-color: var(--brand);
+            color: #fff;
+        }
+
+        .meta {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 10px 14px;
+            margin-bottom: 14px;
+            font-size: 0.9rem;
+            color: var(--muted);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+        }
+
+        .table-wrap {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            overflow: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1320px;
+        }
+
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #fafbff;
+            color: #111827;
+            font-size: 0.86rem;
+            text-align: right;
+            border-bottom: 1px solid var(--line);
+            border-left: 1px solid var(--line);
+            padding: 10px 8px;
+            white-space: nowrap;
+        }
+
+        tbody td {
+            border-bottom: 1px solid var(--line);
+            border-left: 1px solid var(--line);
+            padding: 9px 8px;
+            font-size: 0.9rem;
+            vertical-align: top;
+        }
+
+        tbody tr:nth-child(even) {
+            background: #fcfdff;
+        }
+
+        .lvl {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #fce8e8;
+            color: #7f1d1d;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .empty {
+            text-align: center;
+            padding: 30px;
+            color: var(--muted);
+        }
+
+        @media print {
+            .actions {
+                display: none;
+            }
+
+            .wrap {
+                max-width: 100%;
+                padding: 0;
+            }
+
+            .head,
+            .meta,
+            .table-wrap {
+                border: 0;
+                border-radius: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="head">
+            <div>
+                <h1 class="title">عرض HTML مباشر للمكاتب التنظيمية</h1>
+                <p class="subtitle">هذه الصفحة محدثة تلقائيا لأنها تقرأ البيانات مباشرة من قاعدة البيانات، وتُحدَّث آليا كل 120 دقيقة.</p>
+            </div>
+            <div class="actions">
+                <a class="btn" href="public_search.php" target="_blank">البحث العمومي</a>
+                <a class="btn primary" href="javascript:window.print();">طباعة</a>
+            </div>
+        </div>
+
+        <div class="meta">
+            <span><strong>النطاق:</strong> الجامعة الوطنية للتعليم - التوجه الديمقراطي (عرض عمومي مباشر)</span>
+            <span><strong>عدد الصفوف:</strong> 125</span>
+            <span><strong>الحالة:</strong> المكاتب النشطة فقط</span>
+            <span><strong>آخر تحديث بالنظام:</strong> 2026-08-08 18:46</span>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>المستوى</th>
+                        <th>اسم المكتب</th>
+                        <th>الجهة</th>
+                        <th>الإقليم</th>
+                        <th>المكتب الأب</th>
+                        <th>الكاتب المسؤول</th>
+                        <th>هاتف الكاتب</th>
+                        <th>أمين المال</th>
+                        <th>هاتف الأمين</th>
+                        <th>تاريخ التأسيس</th>
+                        <th>التجديد المقبل</th>
+                        <th>مدة التجديد</th>
+                        <th>آخر تحديث</th>
+                    </tr>
+                </thead>
+                <tbody>
+                                                                                                    <tr>
+                                <td>1</td>
+                                <td><span class="lvl">وطني</span></td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>عبد الله اغميمط</td>
+                                <td dir="ltr">0662075277</td>
+                                <td>أحمد السباعي</td>
+                                <td dir="ltr">0671716559</td>
+                                <td>2024-01-01</td>
+                                <td>2029-01-01</td>
+                                <td>5 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>2</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>الزكاف محمد</td>
+                                <td dir="ltr">0672080333</td>
+                                <td>الرامي عزيزة</td>
+                                <td dir="ltr">0662636450</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>3</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ الشرق</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>شرقاوي زكرياء</td>
+                                <td dir="ltr">0676366876</td>
+                                <td>الصغيوري الإدريسي ع النبي</td>
+                                <td dir="ltr">0658189065</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>4</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ فاس مكناس</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>زغدور سمير</td>
+                                <td dir="ltr">0642275850</td>
+                                <td>بوفال محمد امين</td>
+                                <td dir="ltr">0673178532</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>5</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ الرباط سلا القنيطرة</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>بوكطاية رشيد</td>
+                                <td dir="ltr">0661923175</td>
+                                <td>سباعي أحمد</td>
+                                <td dir="ltr">0687669950</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>6</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ بني ملال خنيفرة</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>الداودي الحسين</td>
+                                <td dir="ltr">0674920318</td>
+                                <td>عسال حجاج</td>
+                                <td dir="ltr">0668445297</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>7</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>عبد العزيز عطاريد</td>
+                                <td dir="ltr">0673838992</td>
+                                <td>اولخشيش محمد</td>
+                                <td dir="ltr">0707770549</td>
+                                <td>2025-11-30</td>
+                                <td>2028-11-30</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>8</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ مراكش أسفي</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>اطويل حسن</td>
+                                <td dir="ltr">0661798438</td>
+                                <td>المزكوطي عبد العاطي</td>
+                                <td dir="ltr">0700061940</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>9</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ درعة تافيلالت</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>حافيظي م احمد</td>
+                                <td dir="ltr">0657479064</td>
+                                <td>الحسين والداش</td>
+                                <td dir="ltr">0699184435</td>
+                                <td>2024-11-02</td>
+                                <td>2027-11-02</td>
+                                <td>3 سنة</td>
+                                <td>2026-03-23 10:58:16</td>
+                            </tr>
+                                                                                <tr>
+                                <td>10</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ سوس ماسة</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>الضعيف حسن</td>
+                                <td dir="ltr">0699377818</td>
+                                <td>الكمراني سعيد</td>
+                                <td dir="ltr">0687665893</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>11</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ كلميم واد نون</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>مود رشید</td>
+                                <td dir="ltr">0661786714</td>
+                                <td>خوماني محمد الشيخ</td>
+                                <td dir="ltr">0641857030</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>12</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ العيون الساقية الحمراء</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>المكتب الوطني لـ FNE</td>
+                                <td>أزركي سعيد</td>
+                                <td dir="ltr">0611539238</td>
+                                <td>ولدة خالدة</td>
+                                <td dir="ltr">0680706068</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-02-20 09:42:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>13</td>
+                                <td><span class="lvl">جهوي</span></td>
+                                <td>المكتب الجهوي لـ الداخلة وادي الذهب</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>شنتاف يوسف</td>
+                                <td dir="ltr">0762212985</td>
+                                <td>الفرجاوي محمد</td>
+                                <td dir="ltr">0678765594</td>
+                                <td>2024-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>3 سنة</td>
+                                <td>2026-03-10 06:55:45</td>
+                            </tr>
+                                                                                <tr>
+                                <td>14</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ طنجة - اصيلة</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>بندحمان الصياد</td>
+                                <td dir="ltr">0667505173</td>
+                                <td>الأمين بندريس</td>
+                                <td dir="ltr">0662030831</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>15</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ المضيق الفنيدق</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>الطريشن محمد سعيد</td>
+                                <td dir="ltr">0707179535</td>
+                                <td>عبد السلام كلاطي</td>
+                                <td dir="ltr">0708279189</td>
+                                <td>2025-06-22</td>
+                                <td>2027-06-22</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>16</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ تطوان</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>عزيز بوفرحي</td>
+                                <td dir="ltr">0659584133</td>
+                                <td>بدر بحري</td>
+                                <td dir="ltr">0708153436</td>
+                                <td>2025-02-26</td>
+                                <td>2027-02-26</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>17</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الفحص أنجرة</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>العزوزي محمد</td>
+                                <td dir="ltr">0668775328</td>
+                                <td>حمزة العزوزي</td>
+                                <td dir="ltr">0772880910</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>18</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ العرائش</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>جامع مصطفى</td>
+                                <td dir="ltr">0674601975</td>
+                                <td>المساري محمد</td>
+                                <td dir="ltr">0693187244</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>19</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الحسيمة</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>عفاسي منير</td>
+                                <td dir="ltr">0620000965</td>
+                                <td>العثماني نور السعيد</td>
+                                <td dir="ltr">0677463309</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>20</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ شفشاون</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>بو عجاجي خالد</td>
+                                <td dir="ltr">0662043745</td>
+                                <td>حيون عبد الرحيم</td>
+                                <td dir="ltr">6071486610</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>21</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ وزان</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>—</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>أغوثان نافع</td>
+                                <td dir="ltr">0639738974</td>
+                                <td>العشي يونس</td>
+                                <td dir="ltr">0644455709</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>22</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ وجدة أنجاد</td>
+                                <td>الشرق</td>
+                                <td>—</td>
+                                <td>الشرق</td>
+                                <td>بنعطلة ميمون</td>
+                                <td dir="ltr">0670533793</td>
+                                <td>بوتديست محمد</td>
+                                <td dir="ltr">0655872601</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>23</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الناظور</td>
+                                <td>الشرق</td>
+                                <td>—</td>
+                                <td>الشرق</td>
+                                <td>شرقاوي زكرياء</td>
+                                <td dir="ltr">0676366876</td>
+                                <td>الإدريسي مصطفى</td>
+                                <td dir="ltr">0662155604</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>24</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الدريوش</td>
+                                <td>الشرق</td>
+                                <td>—</td>
+                                <td>الشرق</td>
+                                <td>جلال جمدان</td>
+                                <td dir="ltr">0655994558</td>
+                                <td>خديجة بوقريوح</td>
+                                <td dir="ltr">0622036958</td>
+                                <td>2026-01-01</td>
+                                <td>2028-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>25</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ جرادة</td>
+                                <td>الشرق</td>
+                                <td>—</td>
+                                <td>الشرق</td>
+                                <td>زمهوط عبد اللطيف</td>
+                                <td dir="ltr">0622464641</td>
+                                <td>الزياني مراد</td>
+                                <td dir="ltr">6549286940</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>26</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ بركان</td>
+                                <td>الشرق</td>
+                                <td>—</td>
+                                <td>الشرق</td>
+                                <td>عبد الغاني مختاري</td>
+                                <td dir="ltr">0603129857</td>
+                                <td>أزروال طارق</td>
+                                <td dir="ltr">0660593488</td>
+                                <td>2026-01-02</td>
+                                <td>2028-01-02</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>27</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ تاوريرت</td>
+                                <td>الشرق</td>
+                                <td>—</td>
+                                <td>الشرق</td>
+                                <td>عومري بلقاسم</td>
+                                <td dir="ltr">0661736151</td>
+                                <td>زكاغ إبراهيم</td>
+                                <td dir="ltr">0663564998</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>28</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ جرسيف</td>
+                                <td>الشرق</td>
+                                <td>—</td>
+                                <td>الشرق</td>
+                                <td>عقيل احمد</td>
+                                <td dir="ltr">0679821318</td>
+                                <td>أو فقير مصطفى</td>
+                                <td dir="ltr">0678702359</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>29</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ فجيج</td>
+                                <td>الشرق</td>
+                                <td>—</td>
+                                <td>الشرق</td>
+                                <td>بويمتغان رضوان</td>
+                                <td dir="ltr">6718350100</td>
+                                <td>عماري سعيد</td>
+                                <td dir="ltr">0667680988</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>30</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ فاس</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>فريد وعلي</td>
+                                <td dir="ltr">0605909359</td>
+                                <td>عبد السلام عشور</td>
+                                <td dir="ltr">0673735993</td>
+                                <td>2026-01-01</td>
+                                <td>2028-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-08-08 18:45:27</td>
+                            </tr>
+                                                                                <tr>
+                                <td>31</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ مكناس</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>الفاضل حنان</td>
+                                <td dir="ltr">0690970671</td>
+                                <td>بنضحاوية مبارك</td>
+                                <td dir="ltr">0700082103</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>32</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الحاجب</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>حفيظ ايت عوماز</td>
+                                <td dir="ltr">0644418221</td>
+                                <td>الحسناوي عبد المجيد</td>
+                                <td dir="ltr">0673524384</td>
+                                <td>2026-01-01</td>
+                                <td>2028-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-08-08 18:46:07</td>
+                            </tr>
+                                                                                <tr>
+                                <td>33</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ إفران</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>اسماعيل ساسيوي</td>
+                                <td dir="ltr">0644808072</td>
+                                <td>أبوطالب أمناذ</td>
+                                <td dir="ltr">0600162969</td>
+                                <td>2026-01-01</td>
+                                <td>2028-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-08-08 14:09:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>34</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ مولاي يعقوب</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>وعلي عبد الحكيم</td>
+                                <td dir="ltr">0602690414</td>
+                                <td>الفتاش المهدي</td>
+                                <td dir="ltr">0666113303</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>35</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ صفرو</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>معنان مصطفى</td>
+                                <td dir="ltr">0624120687</td>
+                                <td>العبيدي عبد اللطيف</td>
+                                <td dir="ltr">6635100290</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>36</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ بولمان</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>محمد القاسمي</td>
+                                <td dir="ltr">0666850976</td>
+                                <td>الزياني إبراهيم</td>
+                                <td dir="ltr">0707751349</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-08-08 14:07:51</td>
+                            </tr>
+                                                                                <tr>
+                                <td>37</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ تاونات</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>مريم ماكري</td>
+                                <td dir="ltr">0694338544</td>
+                                <td>حمزة الملالي</td>
+                                <td dir="ltr">0666861960</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>38</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ تازة</td>
+                                <td>فاس مكناس</td>
+                                <td>—</td>
+                                <td>فاس مكناس</td>
+                                <td>اغميمض فيصل</td>
+                                <td dir="ltr">0618579385</td>
+                                <td>السالكة المكي</td>
+                                <td dir="ltr">0671724100</td>
+                                <td>2026-04-19</td>
+                                <td>2028-04-19</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-20 15:18:52</td>
+                            </tr>
+                                                                                <tr>
+                                <td>39</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الرباط</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>—</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>معتصم الطيب</td>
+                                <td dir="ltr">0708914333</td>
+                                <td>نايت محمد علي حسن</td>
+                                <td dir="ltr">0766037567</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>40</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ سلا</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>—</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>عبيل سعد</td>
+                                <td dir="ltr">0622036639</td>
+                                <td>كوزة عبد الكريم</td>
+                                <td dir="ltr">0676074803</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>41</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الصخيرات - تمارة</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>—</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>أيت عيني رضوان</td>
+                                <td dir="ltr">0639623066</td>
+                                <td>الحسني علوي علي</td>
+                                <td dir="ltr">0762732378</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>42</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ القنيطرة</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>—</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>البيصوري عبد الرحمن</td>
+                                <td dir="ltr">0667071037</td>
+                                <td>الزياني السعيد</td>
+                                <td dir="ltr">0661142742</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-06-23 19:56:57</td>
+                            </tr>
+                                                                                <tr>
+                                <td>43</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الخميسات</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>—</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>هنيدة محمد</td>
+                                <td dir="ltr">0660800204</td>
+                                <td>قاسمي هشام</td>
+                                <td dir="ltr">0701680382</td>
+                                <td>2025-05-18</td>
+                                <td>2027-05-18</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-26 21:22:32</td>
+                            </tr>
+                                                                                <tr>
+                                <td>44</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ سيدي قاسم</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>—</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>العروسي صهيب</td>
+                                <td dir="ltr">067020603</td>
+                                <td>بوكطاية رشيد</td>
+                                <td dir="ltr">0600072662</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>45</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ سيدي سليمان</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>—</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>كركوب ع العالي</td>
+                                <td dir="ltr">0663367831</td>
+                                <td>الوردي جلال</td>
+                                <td dir="ltr">0664984630</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>46</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ بني ملال</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>—</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>امرار إسماعيل</td>
+                                <td dir="ltr">0628067190</td>
+                                <td>أمروس سعيد</td>
+                                <td dir="ltr">0668606436</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>47</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ أزيلال</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>—</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>اليازيد فضلي</td>
+                                <td dir="ltr">0603507942</td>
+                                <td>النصير محمد</td>
+                                <td dir="ltr">0613707350</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>48</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الفقيه بن صالح</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>—</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>شقراطي عبد الرزاق</td>
+                                <td dir="ltr">0662331041</td>
+                                <td>السهلي محمد</td>
+                                <td dir="ltr">0673504511</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>49</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ خنيفرة</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>—</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>باموح ادريس</td>
+                                <td dir="ltr">0611848940</td>
+                                <td>فضولي عزيز</td>
+                                <td dir="ltr">0600045138</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>50</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ خريبكة</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>—</td>
+                                <td>بني ملال خنيفرة</td>
+                                <td>عسال المهدي</td>
+                                <td dir="ltr">0652277954</td>
+                                <td>الهاشيمي بوشعيب</td>
+                                <td dir="ltr">0666931818</td>
+                                <td>2026-06-28</td>
+                                <td>2028-06-28</td>
+                                <td>2 سنة</td>
+                                <td>2026-06-29 09:47:44</td>
+                            </tr>
+                                                                                <tr>
+                                <td>51</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الدار البيضاء أنفا</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>آيت ناصر زكرياء</td>
+                                <td dir="ltr">0664873111</td>
+                                <td>غزالي رشيد</td>
+                                <td dir="ltr">0675186020</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>52</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الفداء - مرس السلطان</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>منو سعيد</td>
+                                <td dir="ltr">0681545848</td>
+                                <td>احسان عبد القدوس</td>
+                                <td dir="ltr">0695441868</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-08 10:03:08</td>
+                            </tr>
+                                                                                <tr>
+                                <td>53</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ عين السبع - الحي المحمدي</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>يونس جدار ( مكلف بتسيير الفرع)</td>
+                                <td dir="ltr">0663886761</td>
+                                <td>آيت با حفيظ عبد العزيز</td>
+                                <td dir="ltr">6642056270</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-13 14:27:27</td>
+                            </tr>
+                                                                                <tr>
+                                <td>54</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الحي الحسني</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>طارق عزوزي</td>
+                                <td dir="ltr">0681284469</td>
+                                <td>بسمة تاغدة</td>
+                                <td dir="ltr">0681938958</td>
+                                <td>2026-03-29</td>
+                                <td>2028-03-29</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-13 14:23:24</td>
+                            </tr>
+                                                                                <tr>
+                                <td>55</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ عين الشق</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>شكري عثمان</td>
+                                <td dir="ltr">0698924287</td>
+                                <td>الضروبي خالد</td>
+                                <td dir="ltr">0674332832</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>56</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ سيدي البرنوصي</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>*********</td>
+                                <td dir="ltr"></td>
+                                <td>*********</td>
+                                <td dir="ltr"></td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>57</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ ابن امسيك</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>********</td>
+                                <td dir="ltr"></td>
+                                <td>********</td>
+                                <td dir="ltr"></td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>58</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ مولاي رشيد</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>محمد القشقاشي</td>
+                                <td dir="ltr">0663886761</td>
+                                <td>.</td>
+                                <td dir="ltr"></td>
+                                <td>2026-04-01</td>
+                                <td>2028-04-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-08-08 18:27:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>59</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ المحمدية</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>بوجمعة بن الطويهر</td>
+                                <td dir="ltr">0649605145</td>
+                                <td>ملوكي سامي</td>
+                                <td dir="ltr">0660197290</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>60</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الجديدة</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>عطاريد ع العزيز</td>
+                                <td dir="ltr">0673838992</td>
+                                <td>الدهباني البشير</td>
+                                <td dir="ltr">0701050865</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>61</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ النواصر</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>اولخشيش محمد</td>
+                                <td dir="ltr">0677310182</td>
+                                <td>أو هنك عمر</td>
+                                <td dir="ltr">0618089389</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>62</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ مديونة</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>إزراني حفيظ</td>
+                                <td dir="ltr">0661354202</td>
+                                <td>الغدان إسماعيل</td>
+                                <td dir="ltr">0672722285</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>63</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ بنسليمان</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>الحسين فخر الدين</td>
+                                <td dir="ltr">0618604345</td>
+                                <td>القدوري عزوز</td>
+                                <td dir="ltr">0666962290</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>64</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ برشيد</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>عز العرب بنحساين</td>
+                                <td dir="ltr">0715525729</td>
+                                <td>صردي عبد الطيف</td>
+                                <td dir="ltr">0667438942</td>
+                                <td>2026-04-19</td>
+                                <td>2028-04-19</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-20 15:24:35</td>
+                            </tr>
+                                                                                <tr>
+                                <td>65</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ سطات</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>نوري توفيق</td>
+                                <td dir="ltr">0662324021</td>
+                                <td>عطري رشيد</td>
+                                <td dir="ltr">0620023410</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>66</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ سيدي بنور</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>—</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>محمد زنزون</td>
+                                <td dir="ltr">0678334072</td>
+                                <td>عزيز لشهب</td>
+                                <td dir="ltr">0609816401</td>
+                                <td>2025-12-28</td>
+                                <td>2027-12-28</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>67</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ مراكش</td>
+                                <td>مراكش أسفي</td>
+                                <td>—</td>
+                                <td>مراكش أسفي</td>
+                                <td>المزكوطي عبد العاطي</td>
+                                <td dir="ltr">0700061940</td>
+                                <td>عصام عبد العزيز</td>
+                                <td dir="ltr">0668100790</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>68</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ شيشاوة</td>
+                                <td>مراكش أسفي</td>
+                                <td>—</td>
+                                <td>مراكش أسفي</td>
+                                <td>آيت القاضي حسن</td>
+                                <td dir="ltr">0668254408</td>
+                                <td>سبايس أمين</td>
+                                <td dir="ltr">0670931806</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>69</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الحوز</td>
+                                <td>مراكش أسفي</td>
+                                <td>—</td>
+                                <td>مراكش أسفي</td>
+                                <td>اطويل حسن</td>
+                                <td dir="ltr">0661798438</td>
+                                <td>زخنيني محمد</td>
+                                <td dir="ltr">0700061936</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>70</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ قلعة السراغنة</td>
+                                <td>مراكش أسفي</td>
+                                <td>—</td>
+                                <td>مراكش أسفي</td>
+                                <td>الجوهري رضوان</td>
+                                <td dir="ltr">0629280010</td>
+                                <td>أبو النصر فيصل</td>
+                                <td dir="ltr">0614025960</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-06-23 23:44:56</td>
+                            </tr>
+                                                                                <tr>
+                                <td>71</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الصويرة</td>
+                                <td>مراكش أسفي</td>
+                                <td>—</td>
+                                <td>مراكش أسفي</td>
+                                <td>مهراز ایوب</td>
+                                <td dir="ltr">0668357690</td>
+                                <td>ندابراهیم رضوان</td>
+                                <td dir="ltr">0626191391</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>72</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الرحامنة</td>
+                                <td>مراكش أسفي</td>
+                                <td>—</td>
+                                <td>مراكش أسفي</td>
+                                <td>ركني أحمد</td>
+                                <td dir="ltr">0619785224</td>
+                                <td>موساوي يوسف</td>
+                                <td dir="ltr">0625589230</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>73</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ آسفي</td>
+                                <td>مراكش أسفي</td>
+                                <td>—</td>
+                                <td>مراكش أسفي</td>
+                                <td>موساعیف مراد</td>
+                                <td dir="ltr">0662845941</td>
+                                <td>زرزان امحمد</td>
+                                <td dir="ltr">0653299118</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>74</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ اليوسفية</td>
+                                <td>مراكش أسفي</td>
+                                <td>—</td>
+                                <td>مراكش أسفي</td>
+                                <td>الوصبي أسامة</td>
+                                <td dir="ltr">0616437467</td>
+                                <td>الراقي أسامة</td>
+                                <td dir="ltr">0615446824</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>75</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ الرشيدية</td>
+                                <td>درعة تافيلالت</td>
+                                <td>—</td>
+                                <td>درعة تافيلالت</td>
+                                <td>الهيلالي رشيدة</td>
+                                <td dir="ltr">0652885168</td>
+                                <td>سفى محمد</td>
+                                <td dir="ltr">0662081693</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>76</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ ورزازات</td>
+                                <td>درعة تافيلالت</td>
+                                <td>—</td>
+                                <td>درعة تافيلالت</td>
+                                <td>قاسم محمد</td>
+                                <td dir="ltr">0610101564</td>
+                                <td>ايت احمد وعلى محمد</td>
+                                <td dir="ltr">0677672847</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>77</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ ميدلت</td>
+                                <td>درعة تافيلالت</td>
+                                <td>—</td>
+                                <td>درعة تافيلالت</td>
+                                <td>لحسن أمنهو</td>
+                                <td dir="ltr">0661705972</td>
+                                <td>هناش حسن</td>
+                                <td dir="ltr">0676591675</td>
+                                <td>2025-11-02</td>
+                                <td>2027-11-02</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>78</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ تنغير</td>
+                                <td>درعة تافيلالت</td>
+                                <td>—</td>
+                                <td>درعة تافيلالت</td>
+                                <td>مساعد مصطفى</td>
+                                <td dir="ltr">0664251243</td>
+                                <td>الشافعي حمزة</td>
+                                <td dir="ltr">0604001463</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>79</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ زاكورة</td>
+                                <td>درعة تافيلالت</td>
+                                <td>—</td>
+                                <td>درعة تافيلالت</td>
+                                <td>عزان م أحمد</td>
+                                <td dir="ltr">0666250590</td>
+                                <td>نبو محمد أمين</td>
+                                <td dir="ltr">0681810541</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>80</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ أكادير - إداوتنان</td>
+                                <td>سوس ماسة</td>
+                                <td>—</td>
+                                <td>سوس ماسة</td>
+                                <td>نافع محمد</td>
+                                <td dir="ltr">0601831892</td>
+                                <td>بصور مولود</td>
+                                <td dir="ltr">0677185172</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>81</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ انزكان - آيت ملول</td>
+                                <td>سوس ماسة</td>
+                                <td>—</td>
+                                <td>سوس ماسة</td>
+                                <td>الكمراني سعيد</td>
+                                <td dir="ltr">0687665893</td>
+                                <td>بوحشوش هشام</td>
+                                <td dir="ltr">0600197933</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>82</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ شتوكة آيت باها</td>
+                                <td>سوس ماسة</td>
+                                <td>—</td>
+                                <td>سوس ماسة</td>
+                                <td>أمجوض محمد</td>
+                                <td dir="ltr">0672922260</td>
+                                <td>انس اقزيب (بالنيابة)</td>
+                                <td dir="ltr">0668067032</td>
+                                <td>2025-01-19</td>
+                                <td>2027-01-19</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>83</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ تارودانت</td>
+                                <td>سوس ماسة</td>
+                                <td>—</td>
+                                <td>سوس ماسة</td>
+                                <td>أيت الحبيب بوبكر</td>
+                                <td dir="ltr">0638110572</td>
+                                <td>الدشيش سعيد</td>
+                                <td dir="ltr">0600072640</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>84</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ تيزنيت</td>
+                                <td>سوس ماسة</td>
+                                <td>—</td>
+                                <td>سوس ماسة</td>
+                                <td>هشام الكرطيط</td>
+                                <td dir="ltr">0666469305</td>
+                                <td>المدني الذهبي</td>
+                                <td dir="ltr">0668699235</td>
+                                <td>2026-04-19</td>
+                                <td>2028-04-19</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-20 08:24:00</td>
+                            </tr>
+                                                                                <tr>
+                                <td>85</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ طاطا</td>
+                                <td>سوس ماسة</td>
+                                <td>—</td>
+                                <td>سوس ماسة</td>
+                                <td>مصطفى بوشيت</td>
+                                <td dir="ltr">0624165070</td>
+                                <td>جواد أقديم</td>
+                                <td dir="ltr">0648775888</td>
+                                <td>2026-04-19</td>
+                                <td>2028-04-19</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-20 15:47:45</td>
+                            </tr>
+                                                                                <tr>
+                                <td>86</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ كلميم</td>
+                                <td>كلميم واد نون</td>
+                                <td>—</td>
+                                <td>كلميم واد نون</td>
+                                <td>ركيبي أحمد</td>
+                                <td dir="ltr">0633403882</td>
+                                <td>مود رشید</td>
+                                <td dir="ltr">0661786714</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>87</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ أسا الزاك</td>
+                                <td>كلميم واد نون</td>
+                                <td>—</td>
+                                <td>كلميم واد نون</td>
+                                <td>بوحامد حسن</td>
+                                <td dir="ltr">0666270169</td>
+                                <td>أصكام محمد</td>
+                                <td dir="ltr">0671355197</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>88</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ طانطان</td>
+                                <td>كلميم واد نون</td>
+                                <td>—</td>
+                                <td>كلميم واد نون</td>
+                                <td>خوماني محمد الشيخ</td>
+                                <td dir="ltr">0606434312</td>
+                                <td>أيد الهاشمي ع اللطيف</td>
+                                <td dir="ltr">0662069361</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>89</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ سيدي إفني</td>
+                                <td>كلميم واد نون</td>
+                                <td>—</td>
+                                <td>كلميم واد نون</td>
+                                <td>بولوز الحسن</td>
+                                <td dir="ltr">0670088737</td>
+                                <td>العاصم إبراهيم</td>
+                                <td dir="ltr">0600330333</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>90</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ العيون</td>
+                                <td>العيون الساقية الحمراء</td>
+                                <td>—</td>
+                                <td>العيون الساقية الحمراء</td>
+                                <td>الإدريسي محمد السالك</td>
+                                <td dir="ltr">0641850713</td>
+                                <td>رجعي حليمة</td>
+                                <td dir="ltr">0688224877</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>91</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ بوجدور</td>
+                                <td>العيون الساقية الحمراء</td>
+                                <td>—</td>
+                                <td>العيون الساقية الحمراء</td>
+                                <td>محمد سالم مسكة</td>
+                                <td dir="ltr">0600111975</td>
+                                <td>مصطفى أيت المعلم</td>
+                                <td dir="ltr">0668215865</td>
+                                <td>2025-11-19</td>
+                                <td>2027-11-19</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>92</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ طرفاية</td>
+                                <td>العيون الساقية الحمراء</td>
+                                <td>—</td>
+                                <td>العيون الساقية الحمراء</td>
+                                <td>كونيف يونس</td>
+                                <td dir="ltr">0666657546</td>
+                                <td>شايبة عبد الله</td>
+                                <td dir="ltr">0653533616</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>93</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ السمارة</td>
+                                <td>العيون الساقية الحمراء</td>
+                                <td>—</td>
+                                <td>العيون الساقية الحمراء</td>
+                                <td>منى عزيز</td>
+                                <td dir="ltr">0621950524</td>
+                                <td>بغاض احمد</td>
+                                <td dir="ltr">0615198821</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>94</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ وادي الذهب (الداخلة)</td>
+                                <td>الداخلة وادي الذهب</td>
+                                <td>—</td>
+                                <td>الداخلة وادي الذهب</td>
+                                <td>وقيد عبد الفتاح</td>
+                                <td dir="ltr">0662534409</td>
+                                <td>الفرجاوي محمد</td>
+                                <td dir="ltr">0678765594</td>
+                                <td>2024-01-01</td>
+                                <td>2026-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:17</td>
+                            </tr>
+                                                                                <tr>
+                                <td>95</td>
+                                <td><span class="lvl">إقليمي</span></td>
+                                <td>المكتب الإقليمي لـ وادي الذهب (الثاني)</td>
+                                <td>الداخلة وادي الذهب</td>
+                                <td>—</td>
+                                <td>الداخلة وادي الذهب</td>
+                                <td>عزيز العظيمي</td>
+                                <td dir="ltr">0667896624</td>
+                                <td>فتيحة البربوشي</td>
+                                <td dir="ltr">0638932137</td>
+                                <td>2026-01-01</td>
+                                <td>2028-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-23 16:39:22</td>
+                            </tr>
+                                                                                <tr>
+                                <td>101</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>بونعمان</td>
+                                <td>سوس ماسة</td>
+                                <td>تيزنيت</td>
+                                <td>تيزنيت</td>
+                                <td>ياسين إد المقدم</td>
+                                <td dir="ltr">0653021500</td>
+                                <td>رشيد بوشميض</td>
+                                <td dir="ltr">0624380850</td>
+                                <td>2025-11-08</td>
+                                <td>2027-11-08</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>103</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>تيزنيت</td>
+                                <td>سوس ماسة</td>
+                                <td>تيزنيت</td>
+                                <td>تيزنيت</td>
+                                <td>مصطفى نحايلي</td>
+                                <td dir="ltr">0666918073</td>
+                                <td>ابراهيم العداوي</td>
+                                <td dir="ltr">0672588507</td>
+                                <td>2025-10-26</td>
+                                <td>2027-10-26</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>106</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>أنزي ـ تيغمي</td>
+                                <td>سوس ماسة</td>
+                                <td>تيزنيت</td>
+                                <td>تيزنيت</td>
+                                <td>بوبكر أيت بوديب</td>
+                                <td dir="ltr">0618330810</td>
+                                <td>العربي اكريش</td>
+                                <td dir="ltr">0667599981</td>
+                                <td>2025-11-18</td>
+                                <td>2027-11-18</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>112</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>بيوكرى واد الصفا</td>
+                                <td>سوس ماسة</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>ادريس أشوور</td>
+                                <td dir="ltr">0634722255</td>
+                                <td>محمد حميتي</td>
+                                <td dir="ltr">0660263235</td>
+                                <td>2024-02-18</td>
+                                <td>2026-02-18</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>113</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>أيت عميرة سيدي بيبي</td>
+                                <td>سوس ماسة</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>مصطفى بيكوز</td>
+                                <td dir="ltr">0676046347</td>
+                                <td>ابراهيم الركوب</td>
+                                <td dir="ltr">0672131904</td>
+                                <td>2025-12-21</td>
+                                <td>2027-12-21</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>114</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>بلفاع ماسة</td>
+                                <td>سوس ماسة</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>يوسف الصوصي العلوي</td>
+                                <td dir="ltr">0666062568</td>
+                                <td>الحسين بيهي</td>
+                                <td dir="ltr">0668491294</td>
+                                <td>2024-10-06</td>
+                                <td>2026-10-06</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>115</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>أكلو ـ المعدر</td>
+                                <td>سوس ماسة</td>
+                                <td>تيزنيت</td>
+                                <td>تيزنيت</td>
+                                <td>المدني الذهبي</td>
+                                <td dir="ltr">0666918073</td>
+                                <td>مصطفى المنصوري</td>
+                                <td dir="ltr">0668699235</td>
+                                <td>2026-01-27</td>
+                                <td>2028-01-27</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>118</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>أزمور</td>
+                                <td>الدار البيضاء - سطات</td>
+                                <td>الجديدة</td>
+                                <td>الجديدة</td>
+                                <td>بوجمع مينيو</td>
+                                <td dir="ltr">0615702827</td>
+                                <td>المهدي سهيمي</td>
+                                <td dir="ltr">0628940847</td>
+                                <td>2024-12-01</td>
+                                <td>2026-12-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>122</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>لمريسة تابريكت</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>سلا</td>
+                                <td>سلا</td>
+                                <td>محمد بوگرين</td>
+                                <td dir="ltr">0666481093</td>
+                                <td>هشام نواري</td>
+                                <td dir="ltr">0613820816</td>
+                                <td>2025-11-18</td>
+                                <td>2027-11-18</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>123</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>العيايدة بوقنادل عامر</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>سلا</td>
+                                <td>سلا</td>
+                                <td>ابو سفيان القاسمي</td>
+                                <td dir="ltr">0600847236</td>
+                                <td>سفيان المنصوري</td>
+                                <td dir="ltr">0727899059</td>
+                                <td>2025-11-18</td>
+                                <td>2027-11-18</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>124</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>بطانة حي السلام</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>سلا</td>
+                                <td>سلا</td>
+                                <td>عبد الكريم كوزة</td>
+                                <td dir="ltr">0676074803</td>
+                                <td>يسرى بنجعة</td>
+                                <td dir="ltr">0648296343</td>
+                                <td>2025-11-18</td>
+                                <td>2027-11-18</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>125</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>عين دريج</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>وزان</td>
+                                <td>وزان</td>
+                                <td>يوسف احمامو</td>
+                                <td dir="ltr">0622301196</td>
+                                <td>جلال احلاس</td>
+                                <td dir="ltr">0777445100</td>
+                                <td>2025-01-01</td>
+                                <td>2027-01-01</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>126</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>سيدي رضوان</td>
+                                <td>طنجة تطوان الحسيمة</td>
+                                <td>وزان</td>
+                                <td>وزان</td>
+                                <td>شيماء السهلي</td>
+                                <td dir="ltr">0621369250</td>
+                                <td>عبد السلام برحال</td>
+                                <td dir="ltr">0659728414</td>
+                                <td>2024-12-12</td>
+                                <td>2026-12-12</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 15:44:18</td>
+                            </tr>
+                                                                                <tr>
+                                <td>146</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>احصين السهول</td>
+                                <td>الرباط سلا القنيطرة</td>
+                                <td>سلا</td>
+                                <td>سلا</td>
+                                <td>مروان دحان</td>
+                                <td dir="ltr">0634361289</td>
+                                <td>لحسن الساط</td>
+                                <td dir="ltr">0701070888</td>
+                                <td>2025-11-18</td>
+                                <td>2027-11-18</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-25 19:38:06</td>
+                            </tr>
+                                                                                <tr>
+                                <td>147</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>واد امليل</td>
+                                <td>فاس مكناس</td>
+                                <td>تازة</td>
+                                <td>تازة</td>
+                                <td>محمد العلوط</td>
+                                <td dir="ltr">660452826</td>
+                                <td>سفيانالمزكلدي</td>
+                                <td dir="ltr">604719204</td>
+                                <td>2025-12-07</td>
+                                <td>2027-12-07</td>
+                                <td>2 سنة</td>
+                                <td>2026-05-20 16:48:48</td>
+                            </tr>
+                                                                                <tr>
+                                <td>148</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>تايناست</td>
+                                <td>فاس مكناس</td>
+                                <td>تازة</td>
+                                <td>تازة</td>
+                                <td>سفيان دادو</td>
+                                <td dir="ltr">635429655</td>
+                                <td>نجوى الشادلي</td>
+                                <td dir="ltr">700232219</td>
+                                <td>2026-11-22</td>
+                                <td>2028-11-22</td>
+                                <td>2 سنة</td>
+                                <td>2026-05-20 16:52:13</td>
+                            </tr>
+                                                                                <tr>
+                                <td>149</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>تاهلة</td>
+                                <td>فاس مكناس</td>
+                                <td>تازة</td>
+                                <td>تازة</td>
+                                <td>العياشي تاكركرا</td>
+                                <td dir="ltr">21266201126</td>
+                                <td>اسماعيل الربيبي</td>
+                                <td dir="ltr">602184992</td>
+                                <td>2026-04-12</td>
+                                <td>2028-04-12</td>
+                                <td>2 سنة</td>
+                                <td>2026-05-20 16:59:38</td>
+                            </tr>
+                                                                                <tr>
+                                <td>151</td>
+                                <td><span class="lvl">محلي</span></td>
+                                <td>اكنول</td>
+                                <td>فاس مكناس</td>
+                                <td>تازة</td>
+                                <td>تازة</td>
+                                <td>عبد المنعم الدراجي</td>
+                                <td dir="ltr">691335502</td>
+                                <td>محمد بوطاون</td>
+                                <td dir="ltr">691335502</td>
+                                <td>2026-04-12</td>
+                                <td>2028-04-12</td>
+                                <td>2 سنة</td>
+                                <td>2026-05-20 17:08:43</td>
+                            </tr>
+                                                                                <tr>
+                                <td>119</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>النقابة الوطنية لأستاذات وأساتذة التعليم الإبتدائي بالمغرب SNEP</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>عبد اللطيف مجاهد</td>
+                                <td dir="ltr">0661461180</td>
+                                <td>حميد لبوش</td>
+                                <td dir="ltr">0702075749</td>
+                                <td>2026-02-16</td>
+                                <td>2028-02-16</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-13 08:54:54</td>
+                            </tr>
+                                                                                <tr>
+                                <td>120</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>النقابة الوطنية للمتصرفين والمتصرفات بقطاع التعليم SNASE</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>توفيق عبد الواحد</td>
+                                <td dir="ltr">0700024958</td>
+                                <td>محمد الكزولي</td>
+                                <td dir="ltr">0667747650</td>
+                                <td>2026-02-14</td>
+                                <td>2028-02-14</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-13 08:57:58</td>
+                            </tr>
+                                                                                <tr>
+                                <td>128</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>النقابة الوطنية للمبرزين/ات بالمغرب SNAM</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>مصطفى المجاهد</td>
+                                <td dir="ltr">0600072670</td>
+                                <td>عبد الرحين البريمي</td>
+                                <td dir="ltr">0668608369</td>
+                                <td>2025-07-03</td>
+                                <td>2027-07-03</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-13 08:45:49</td>
+                            </tr>
+                                                                                <tr>
+                                <td>129</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>النقابة الوطنية للمساعدين التربويين SNAP</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>بنعيسى سلمان</td>
+                                <td dir="ltr">0664383804</td>
+                                <td>أحمد الشافعي</td>
+                                <td dir="ltr">0619254964</td>
+                                <td>2024-06-05</td>
+                                <td>2026-06-05</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-13 08:51:01</td>
+                            </tr>
+                                                                                <tr>
+                                <td>130</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>اتحاد نساء التعليم بالمغرب  UFEM</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>سعيدة كمال</td>
+                                <td dir="ltr">0608873290</td>
+                                <td>خديجة مماد</td>
+                                <td dir="ltr">0602874488</td>
+                                <td>2025-05-26</td>
+                                <td>2027-05-26</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-13 08:54:21</td>
+                            </tr>
+                                                                                <tr>
+                                <td>135</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>اتحاد شباب التعليم بالمغرب</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>عزيزة الرامي</td>
+                                <td dir="ltr">0662636450</td>
+                                <td>عزيزة الرامي</td>
+                                <td dir="ltr">0662636450</td>
+                                <td>2024-05-24</td>
+                                <td>2026-05-24</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-14 07:09:56</td>
+                            </tr>
+                                                                                <tr>
+                                <td>139</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>اتحاد شباب التعليم بالمغرب</td>
+                                <td>سوس ماسة</td>
+                                <td>تيزنيت</td>
+                                <td>اتحاد شباب التعليم بالمغرب</td>
+                                <td>بوبكر ايت بوديب</td>
+                                <td dir="ltr">0618330810</td>
+                                <td>بلخير بومهاوت</td>
+                                <td dir="ltr">0643582927</td>
+                                <td>2022-11-12</td>
+                                <td>2024-11-12</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-14 10:04:07</td>
+                            </tr>
+                                                                                <tr>
+                                <td>141</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>اتحاد شباب التعليم بالمغرب</td>
+                                <td>سوس ماسة</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>اتحاد شباب التعليم بالمغرب</td>
+                                <td>انس اقزيب</td>
+                                <td dir="ltr">0668067032</td>
+                                <td>رشيد علاوي</td>
+                                <td dir="ltr">0677952044</td>
+                                <td>2024-03-24</td>
+                                <td>2026-03-24</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-16 22:43:12</td>
+                            </tr>
+                                                                                <tr>
+                                <td>142</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>النقابة الوطنية للمساعدين التربويين SNAP</td>
+                                <td>سوس ماسة</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>النقابة الوطنية للمساعدين التربويين SNAP</td>
+                                <td>مبارك بوكيوض</td>
+                                <td dir="ltr">0662558699</td>
+                                <td>علي باعلي</td>
+                                <td dir="ltr">0668306782</td>
+                                <td>2024-11-17</td>
+                                <td>2026-11-17</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-16 22:45:42</td>
+                            </tr>
+                                                                                <tr>
+                                <td>143</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>النقابة الوطنية لأستاذات وأساتذة التعليم الإبتدائي بالمغرب SNEP</td>
+                                <td>سوس ماسة</td>
+                                <td>شتوكة آيت باها</td>
+                                <td>النقابة الوطنية لأستاذات وأساتذة التعليم الإبتدائي بالمغرب SNEP</td>
+                                <td>رشيد عليويش</td>
+                                <td dir="ltr">0671869452</td>
+                                <td>محمد حميتي</td>
+                                <td dir="ltr">0660263235</td>
+                                <td>2025-11-05</td>
+                                <td>2027-11-05</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-16 22:49:31</td>
+                            </tr>
+                                                                                <tr>
+                                <td>144</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>النقابة الوطنية للمساعدين التربويين SNAP</td>
+                                <td>سوس ماسة</td>
+                                <td>تيزنيت</td>
+                                <td>النقابة الوطنية للمساعدين التربويين SNAP</td>
+                                <td>أحمد الشافعي</td>
+                                <td dir="ltr">0619254964</td>
+                                <td>حسن كريم</td>
+                                <td dir="ltr">0670280042</td>
+                                <td>2022-11-20</td>
+                                <td>2024-11-20</td>
+                                <td>2 سنة</td>
+                                <td>2026-03-22 17:44:14</td>
+                            </tr>
+                                                                                <tr>
+                                <td>145</td>
+                                <td><span class="lvl">موازي</span></td>
+                                <td>النقابة الوطنية لأستاذات وأساتذة التعليم الإبتدائي بالمغرب SNEP</td>
+                                <td>كلميم واد نون</td>
+                                <td>سيدي إفني</td>
+                                <td>النقابة الوطنية لأستاذات وأساتذة التعليم الإبتدائي بالمغرب SNEP</td>
+                                <td>مبارك بولوز</td>
+                                <td dir="ltr">0762627903</td>
+                                <td>الحسين ادعمار</td>
+                                <td dir="ltr">0643663862</td>
+                                <td>2026-04-19</td>
+                                <td>2028-04-19</td>
+                                <td>2 سنة</td>
+                                <td>2026-04-23 18:38:34</td>
+                            </tr>
+                                                            </tbody>
+            </table>
+        </div>
+    </div>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a30c5f4a6d2c5683',t:'MTc4NzY3OTUyNQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

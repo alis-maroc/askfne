@@ -18,7 +18,8 @@ export async function GET(
       where: { id },
       include: {
         messages: {
-          orderBy: { createdAt: "asc" },
+          take: 200,
+          orderBy: { createdAt: "desc" },
         },
         customer: true,
         tags: {
@@ -42,6 +43,9 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    // Sort messages back to chronological order
+    conversation.messages.reverse();
 
     return NextResponse.json(conversation);
   } catch (error) {

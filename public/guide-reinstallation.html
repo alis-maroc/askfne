@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guide de Restauration & Déploiement Complet - Serveur FNE Chatbot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #991b1b;
+      --primary-dark: #7f1d1d;
+      --accent: #d97706;
+      --dark: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-100: #f1f5f9;
+      --code-bg: #0b1120;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      color: #1e293b;
+      background: #f8fafc;
+      line-height: 1.6;
+      padding: 30px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 40px 48px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0;
+    }
+
+    .header {
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 24px;
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-title h1 {
+      font-size: 1.65rem;
+      font-weight: 900;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+
+    .header-title p {
+      font-size: 0.95rem;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    .badge-emergency {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #f87171;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 0.8rem;
+    }
+
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--slate-800);
+      margin-top: 32px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-left: 4px solid var(--primary);
+      padding-left: 12px;
+    }
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--slate-700);
+      margin-top: 18px;
+      margin-bottom: 8px;
+    }
+
+    p, li {
+      font-size: 0.92rem;
+      color: #334155;
+      margin-bottom: 10px;
+    }
+
+    ul, ol {
+      margin-left: 20px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    pre {
+      background: var(--code-bg);
+      color: #38bdf8;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 16px 20px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      margin: 12px 0 20px;
+      border: 1px solid #1e293b;
+      line-height: 1.5;
+    }
+
+    code {
+      background: #f1f5f9;
+      color: #991b1b;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-weight: normal;
+    }
+
+    .alert {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 16px 0;
+      font-size: 0.9rem;
+      color: #1e40af;
+    }
+
+    .alert-warning {
+      background: #fffbeb;
+      border-left-color: #f59e0b;
+      color: #92400e;
+    }
+
+    .alert-success {
+      background: #f0fdf4;
+      border-left-color: #22c55e;
+      color: #166534;
+    }
+
+    .footer {
+      margin-top: 40px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 16px;
+      font-size: 0.82rem;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    @media print {
+      body {
+        background: white;
+        padding: 0;
+      }
+      .container {
+        box-shadow: none;
+        border: none;
+        padding: 20px 0;
+        max-width: 100%;
+      }
+      pre {
+        background: #1e293b !important;
+        color: #38bdf8 !important;
+        page-break-inside: avoid;
+      }
+      h2 {
+        page-break-after: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="header">
+      <div class="header-title">
+        <h1>FNE Chatbot & Hub - Guide de Déploiement & Restauration</h1>
+        <p>Procédure d'urgence pour réinstaller l'ensemble du système sur un nouveau serveur VPS/Dédié</p>
+      </div>
+      <div class="badge-emergency">DISASTER RECOVERY</div>
+    </div>
+
+    <div class="alert alert-success">
+      <strong>Protection Garantie :</strong> Grâce à la structure Docker et aux scripts de sauvegarde du Dashboard, la réinstallation complète d'un serveur vierge prend moins de <strong>10 minutes</strong>.
+    </div>
+
+    <h2>1. Prérequis du Nouveau Serveur (OS & Docker)</h2>
+    <p>Sur un serveur vierge (Ubuntu 22.04 / 24.04 LTS ou Debian 12) :</p>
+
+    <pre><code># 1. Mise à jour de base
+apt update && apt upgrade -y
+apt install -y git curl wget unzip build-essential
+
+# 2. Installation de Docker & Docker Compose
+curl -fsSL https://get.docker.com | sh
+systemctl enable --now docker
+
+# 3. Vérification
+docker --version
+docker compose version</code></pre>
+
+    <h2>2. Récupération du Code Source & Structure</h2>
+    <p>Clonez le dépôt du projet sur le nouveau serveur :</p>
+
+    <pre><code># Cloner dans le répertoire de travail
+git clone https://github.com/Hesper-Labs/owly.git /root/owly
+cd /root/owly
+
+# Créer les dossiers de stockage persistants
+mkdir -p backups public .wwebjs_auth</code></pre>
+
+    <h2>3. Fichier des Variables d'Environnement (.env)</h2>
+    <p>Créez le fichier <code>/root/owly/.env</code> contenant vos clés secrètes :</p>
+
+    <pre><code># Base de données PostgreSQL interne
+DATABASE_URL="postgresql://postgres:d5872d7f116195dfe94a09208cf9546cc41de96e7665e60a0c62fb6a492f6631@db:5432/owly?schema=public"
+
+# Clés IA (LLM)
+OPENAI_API_KEY="votre_cle_openai"
+GEMINI_API_KEY="votre_cle_gemini"
+
+# URLs & Sécurité
+NEXT_PUBLIC_APP_URL="https://ns516856.ip-158-69-24.net"
+APP_BASE_URL="https://ns516856.ip-158-69-24.net"
+JWT_SECRET="owly_fne_secure_jwt_secret_key_2026"
+CORS_ORIGIN="*"
+
+# Numéro et Jeton de partage WhatsApp
+WHATSAPP_SHARE_TOKEN="votre_token_partage"</code></pre>
+
+    <h2>4. Configuration du Serveur Web Sécurisé (Caddyfile)</h2>
+    <p>Caddy gère automatiquement les certificats SSL HTTPS Let's Encrypt :</p>
+
+    <pre><code># Fichier: /root/owly/Caddyfile
+ns516856.ip-158-69-24.net {
+    reverse_proxy app:3000
+}</code></pre>
+
+    <h2>5. Dépendances Intégrées dans Docker (Chromium, PDF, Polices Kacst)</h2>
+    <div class="alert">
+      <strong>Note Importante :</strong> Le <code>Dockerfile</code> du projet intègre déjà automatiquement toutes les dépendances système requises :
+      <ul style="margin-top:8px;">
+        <li><code>chromium</code> : pour le rendu des posters, reçus et impressions automatiques.</li>
+        <li><code>poppler-utils</code> : pour le traitement et l'analyse des PDF officiels.</li>
+        <li><code>fonts-kacst</code> & polices arabes : pour un rendu arabe parfait sans symboles manquants.</li>
+        <li><code>postgresql-client-16</code> : pour les sauvegardes et restaurations automatisées.</li>
+      </ul>
+    </div>
+
+    <h2>6. Lancement du Conteneur Docker & Initialisation</h2>
+    <p>Lancez la compilation et le démarrage automatique des conteneurs :</p>
+
+    <pre><code>cd /root/owly
+docker compose build --no-cache app
+docker compose up -d
+
+# Vérifier que les 3 conteneurs sont actifs et en bonne santé
+docker ps</code></pre>
+
+    <h2>7. Restauration de la Sauvegarde de Base de Données</h2>
+    <p>Si vous avez téléchargé le fichier de sauvegarde (<code>.sql</code> ou <code>.sql.gz</code>) depuis le Dashboard précédent :</p>
+
+    <pre><code># 1. Copier le fichier de backup dans le dossier backups
+cp /chemin/vers/votre_backup.sql /root/owly/backups/latest_backup.sql
+
+# 2. Restaurer directement dans la base de données PostgreSQL Docker :
+docker exec -i $(docker ps -q --filter "name=owly-db") psql -U postgres -d owly &lt; /root/owly/backups/latest_backup.sql
+
+# OU utiliser le script de restauration intégré dans le Dashboard :
+# Rendez-vous sur https://dash.../backups et cliquez sur "Restaurer"</code></pre>
+
+    <h2>8. Configuration Cloudflare Worker (Taalim.org / askfne)</h2>
+    <p>Sur votre compte Cloudflare (pour le domaine <strong>Taalim.org</strong>), assurez-vous que la variable <code>AI_ORIGIN</code> pointe bien sur l'IP/domaine de votre nouveau serveur :</p>
+
+    <pre><code>const AI_ORIGIN = "http://158.69.24.123:3000"; // ou domaine direct Caddy https://...</code></pre>
+
+    <div class="footer">
+      <span>FNE — Fédération Nationale de l'Enseignement (UMT)</span>
+      <span>Document technique généré le 31 Août 2026</span>
+    </div>
+  </div>
+
+</body>
+</html>

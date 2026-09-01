@@ -1,0 +1,1 @@
+ALTER TABLE "Settings" ADD COLUMN "aiApiKeySecondary" TEXT NOT NULL DEFAULT '';

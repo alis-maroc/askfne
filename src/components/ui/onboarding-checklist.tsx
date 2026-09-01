@@ -52,9 +52,9 @@ export function OnboardingChecklist() {
 
       const auth = authRes.ok ? await authRes.json() : {};
       const settings = settingsRes.ok ? await settingsRes.json() : {};
-      const entries = entriesRes.ok ? await entriesRes.json() : [];
-      const channels = channelsRes.ok ? await channelsRes.json() : [];
-      const team = teamRes.ok ? await teamRes.json() : [];
+      const rawEntries = entriesRes.ok ? await entriesRes.json() : []; const entries = Array.isArray(rawEntries) ? rawEntries : (rawEntries.data || []);
+      const rawChannels = channelsRes.ok ? await channelsRes.json() : []; const channels = Array.isArray(rawChannels) ? rawChannels : (rawChannels.data || []);
+      const rawTeam = teamRes.ok ? await teamRes.json() : []; const team = Array.isArray(rawTeam) ? rawTeam : (rawTeam.data || []);
 
       const connectedChannels = Array.isArray(channels)
         ? channels.filter((c: { isActive: boolean }) => c.isActive)

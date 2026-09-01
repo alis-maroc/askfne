@@ -42,6 +42,21 @@ export async function PUT(request: NextRequest) {
     delete body.createdAt;
     delete body.updatedAt;
 
+    // Masked secrets are display-only values; preserve the stored secret when
+    // the settings form is saved without editing that field.
+    for (const field of [
+      "aiApiKey",
+      "aiApiKeySecondary",
+      "fallbackApiKey",
+      "smtpPass",
+      "imapPass",
+      "twilioToken",
+      "elevenLabsKey",
+      "whatsappApiKey",
+    ]) {
+      if (body[field] === "***") delete body[field];
+    }
+
     const validation = validateBody(updateSettingsSchema, body);
     if (!validation.success) {
       return NextResponse.json({ error: validation.error }, { status: 400 });

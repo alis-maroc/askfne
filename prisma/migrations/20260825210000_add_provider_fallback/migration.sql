@@ -1,0 +1,3 @@
+ALTER TABLE "Settings" ADD COLUMN "fallbackProvider" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Settings" ADD COLUMN "fallbackModel" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Settings" ADD COLUMN "fallbackApiKey" TEXT NOT NULL DEFAULT '';

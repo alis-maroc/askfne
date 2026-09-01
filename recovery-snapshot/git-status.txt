@@ -1,0 +1,37 @@
+ M Dockerfile
+ M README.md
+ M package-lock.json
+ M package.json
+ M prisma.config.ts
+ M src/app/(auth)/login/page.tsx
+ M src/app/(auth)/setup/page.tsx
+ M src/app/(dashboard)/admin/page.tsx
+ M src/app/(dashboard)/automation/page.tsx
+ M src/app/(dashboard)/canned-responses/page.tsx
+ M src/app/(dashboard)/channels/page.tsx
+ M src/app/(dashboard)/conversations/page.tsx
+ M src/app/(dashboard)/customers/page.tsx
+ M src/app/(dashboard)/knowledge/page.tsx
+ M src/app/(dashboard)/layout.tsx
+ M src/app/(dashboard)/settings/page.tsx
+ M src/app/(dashboard)/sla/page.tsx
+ M src/app/(dashboard)/team/page.tsx
+ M src/app/(dashboard)/tickets/page.tsx
+ M src/app/(dashboard)/webhooks/page.tsx
+ M src/app/api/channels/whatsapp/route.ts
+ M src/app/layout.tsx
+ M src/components/ui/onboarding-checklist.tsx
+ M src/lib/ai/engine.ts
+ M src/lib/auth.ts
+ M src/lib/channels/whatsapp.ts
+ M src/lib/validations.ts
+ M src/middleware.ts
+?? imports/
+?? patch_wwebjs.js
+?? recovery-snapshot/
+?? scripts/import-knowledge-pdf.ts
+?? scripts/import-statuts-articles.ts
+?? src/app/(dashboard)/whatsapp-setup/
+?? src/app/api/channels/whatsapp/webhook/
+?? test-kb.mjs
+?? tests/anthropic-provider.test.ts

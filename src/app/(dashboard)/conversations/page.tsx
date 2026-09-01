@@ -68,6 +68,7 @@ const channelColors: Record<string, string> = {
 const channels = [
   { value: "all", label: "All Channels" },
   { value: "whatsapp", label: "WhatsApp" },
+  { value: "web", label: "Web chat" },
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone" },
 ];
@@ -94,6 +95,10 @@ export default function ConversationsPage() {
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchConversations = useCallback(async () => {
@@ -103,18 +108,30 @@ export default function ConversationsPage() {
       if (channelFilter !== "all") params.set("channel", channelFilter);
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (searchQuery.trim()) params.set("search", searchQuery.trim());
+      params.set("page", String(currentPage));
+      params.set("limit", String(pageSize));
 
       const res = await fetch(`/api/conversations?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to load conversations");
-      const data = await res.json();
-      setConversations(data);
+      const json = await res.json();
+      if (json.data && Array.isArray(json.data)) {
+        setConversations(json.data);
+        if (json.pagination) {
+          setTotalCount(json.pagination.total);
+          setTotalPages(json.pagination.totalPages);
+        }
+      } else if (Array.isArray(json)) {
+        setConversations(json);
+        setTotalCount(json.length);
+        setTotalPages(1);
+      }
     } catch (error) {
       console.error("Failed to fetch conversations:", error);
       setFetchError("Failed to load conversations. Please try refreshing the page.");
     } finally {
       setLoading(false);
     }
-  }, [channelFilter, statusFilter, searchQuery]);
+  }, [channelFilter, statusFilter, searchQuery, currentPage, pageSize]);
 
   const fetchConversationDetail = useCallback(async (id: string) => {
     setDetailLoading(true);
@@ -138,6 +155,8 @@ export default function ConversationsPage() {
   useEffect(() => {
     if (selectedId) {
       fetchConversationDetail(selectedId);
+    } else {
+      setSelectedConversation(null);
     }
   }, [selectedId, fetchConversationDetail]);
 
@@ -146,7 +165,10 @@ export default function ConversationsPage() {
   }, [selectedConversation?.messages]);
 
   const handleSelectConversation = (id: string) => {
-    setSelectedId(id);
+    if (id !== selectedId) {
+      setSelectedId(id);
+      setSelectedConversation(null);
+    }
     setMobileShowDetail(true);
   };
 
@@ -225,18 +247,24 @@ export default function ConversationsPage() {
             <div className="flex gap-2">
               <select
                 value={channelFilter}
-                onChange={(e) => setChannelFilter(e.target.value)}
+                onChange={(e) => {
+                  setChannelFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="flex-1 text-xs px-2 py-1.5 border border-owly-border rounded-lg bg-owly-bg focus:outline-none focus:ring-2 focus:ring-owly-primary/30 text-owly-text"
               >
-                {channels.map((ch) => (
-                  <option key={ch.value} value={ch.value}>
-                    {ch.label}
+                {channels.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
                   </option>
                 ))}
               </select>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="flex-1 text-xs px-2 py-1.5 border border-owly-border rounded-lg bg-owly-bg focus:outline-none focus:ring-2 focus:ring-owly-primary/30 text-owly-text"
               >
                 {statuses.map((s) => (
@@ -367,6 +395,36 @@ export default function ConversationsPage() {
               </div>
             )}
           </div>
+
+          {/* Pagination Footer */}
+          {totalCount > 0 && (
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-owly-border bg-owly-surface text-xs text-owly-text-light">
+              <span>
+                {Math.min((currentPage - 1) * pageSize + 1, totalCount)} - {Math.min(currentPage * pageSize, totalCount)} de {totalCount}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1 || loading}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="px-2.5 py-1 rounded border border-owly-border bg-white text-owly-text hover:bg-owly-bg disabled:opacity-40 transition-colors font-medium"
+                >
+                  السابق
+                </button>
+                <span className="px-1 text-owly-text font-semibold">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages || loading}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="px-2.5 py-1 rounded border border-owly-border bg-white text-owly-text hover:bg-owly-bg disabled:opacity-40 transition-colors font-medium"
+                >
+                  التالي
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Panel - Conversation Detail */}

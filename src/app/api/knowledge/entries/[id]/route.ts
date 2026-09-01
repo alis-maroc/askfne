@@ -68,6 +68,35 @@ export async function DELETE(
       );
     }
 
+    // If this entry was imported from WordPress, mark it as 'deleted' in WpProcessedPost
+    // so that future imports will NEVER re-import it!
+    const metadata = existing.metadata as Record<string, unknown> | null;
+    const wpPostId = typeof metadata?.wpPostId === "number" ? metadata.wpPostId : null;
+    if (wpPostId) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "WpProcessedPost" ("wpPostId", "title", "status", "updatedAt") 
+         VALUES ($1, $2, 'deleted', NOW()) 
+         ON CONFLICT ("wpPostId") DO UPDATE SET "status" = 'deleted', "updatedAt" = NOW()`,
+        wpPostId,
+        existing.title
+      ).catch((e) => logger.warn("Failed to mark post as deleted in WpProcessedPost:", e));
+    }
+
+    // If this entry was imported from men.gov.ma, mark it as 'deleted' in MenProcessedItem
+    // so that future syncs will NEVER re-import it!
+    const menItemId = typeof metadata?.menItemId === "string" ? metadata.menItemId : null;
+    if (menItemId) {
+      const menUrl = typeof metadata?.url === "string" ? metadata.url : "";
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "MenProcessedItem" ("id", "url", "title", "status", "updatedAt") 
+         VALUES ($1, $2, $3, 'deleted', NOW()) 
+         ON CONFLICT ("id") DO UPDATE SET "status" = 'deleted', "updatedAt" = NOW()`,
+        menItemId,
+        menUrl,
+        existing.title
+      ).catch((e) => logger.warn("Failed to mark post as deleted in MenProcessedItem:", e));
+    }
+
     await prisma.knowledgeEntry.delete({ where: { id } });
 
     return NextResponse.json({ success: true });

@@ -2,6 +2,8 @@
  * AI Guardrails - Controls what the AI can and cannot do.
  */
 
+import { detectHallucination, isAssistantRefusal } from "./refusal-detector";
+
 export interface GuardrailConfig {
   blockedTopics: string[];
   maxResponseLength: number;
@@ -177,7 +179,22 @@ export function estimateConfidence(
   knowledgeBaseSize: number,
   hasToolCalls: boolean
 ): { score: number; shouldEscalate: boolean } {
+  return estimateConfidenceDetailed(response, knowledgeBaseSize, hasToolCalls, []);
+}
+
+/**
+ * Extended confidence estimator that also considers hallucination detection against the KB.
+ */
+export function estimateConfidenceDetailed(
+  response: string,
+  knowledgeBaseSize: number,
+  hasToolCalls: boolean,
+  knowledgeBase: Array<{ title: string; content: string; category?: string }> = [],
+  userQuery?: string
+): { score: number; shouldEscalate: boolean; hallucinationPenalty?: number; hallucinationReason?: string } {
   let score = 0.5;
+  let hallucinationPenalty = 0;
+  let hallucinationReason: string | undefined;
 
   // Knowledge base coverage
   if (knowledgeBaseSize > 20) score += 0.1;
@@ -187,17 +204,43 @@ export function estimateConfidence(
   if (response.length > 50 && response.length < 1500) score += 0.1;
   if (hasToolCalls) score += 0.1;
 
-  // Uncertainty indicators
-  const uncertainPhrases = [
-    "i'm not sure", "i don't know", "i cannot", "i apologize",
-    "unfortunately", "i'm unable", "beyond my knowledge",
-    "connect you with", "team member",
-  ];
-  const lower = response.toLowerCase();
-  for (const phrase of uncertainPhrases) {
-    if (lower.includes(phrase)) {
-      score -= 0.15;
-      break;
+  // Uncertainty indicators (English, French, and Arabic)
+  if (isAssistantRefusal(response)) {
+    score -= 0.35;
+  } else {
+    const uncertainPhrases = [
+      "i'm not sure", "i don't know", "i cannot", "i apologize",
+      "unfortunately", "i'm unable", "beyond my knowledge",
+      "connect you with", "team member",
+      "للأسف", "لست متأكداً", "غير مؤكد",
+    ];
+    const lower = response.toLowerCase();
+    for (const phrase of uncertainPhrases) {
+      if (lower.includes(phrase)) {
+        score -= 0.15;
+        break;
+      }
+    }
+  }
+
+  // Hallucination detection — penalize confident fabrications
+  if (!isAssistantRefusal(response) && knowledgeBase.length > 0) {
+    const hallucination = detectHallucination(response, knowledgeBase, userQuery);
+    if (hallucination.isHallucination) {
+      hallucinationPenalty = hallucination.confidencePenalty;
+      hallucinationReason = hallucination.reason;
+      // Apply significant penalty — fabrication is worse than uncertainty
+      score -= Math.min(hallucinationPenalty, 0.7);
+    }
+  }
+
+  // Empty KB is suspicious if response is long and confident
+  if (knowledgeBaseSize === 0 && response.length > 200 && !isAssistantRefusal(response)) {
+    const hallucination = detectHallucination(response, [], userQuery);
+    if (hallucination.confidencePenalty > 0) {
+      hallucinationPenalty = Math.max(hallucinationPenalty, hallucination.confidencePenalty);
+      hallucinationReason = hallucination.reason;
+      score -= Math.min(hallucination.confidencePenalty, 0.6);
     }
   }
 
@@ -206,6 +249,8 @@ export function estimateConfidence(
   return {
     score: Math.round(score * 100) / 100,
     shouldEscalate: score < DEFAULT_GUARDRAILS.confidenceThreshold,
+    hallucinationPenalty: hallucinationPenalty > 0 ? hallucinationPenalty : undefined,
+    hallucinationReason,
   };
 }
 

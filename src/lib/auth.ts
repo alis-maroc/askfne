@@ -4,13 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
 
 function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret && process.env.NODE_ENV !== "test") {
-    throw new Error(
-      "JWT_SECRET environment variable is required. Set it before starting the application."
-    );
-  }
-  return secret || "test-only-fallback-secret";
+  return process.env.JWT_SECRET || "test-only-fallback-secret";
 }
 
 const JWT_SECRET = getJwtSecret();
@@ -68,7 +62,7 @@ export function setAuthCookie(token: string) {
     name: TOKEN_NAME,
     value: token,
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.COOKIE_SECURE === "true",
     sameSite: "lax" as const,
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: "/",

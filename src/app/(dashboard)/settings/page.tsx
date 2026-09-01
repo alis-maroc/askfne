@@ -31,6 +31,10 @@ interface SettingsData {
   aiProvider: string;
   aiModel: string;
   aiApiKey: string;
+  aiApiKeySecondary: string;
+  fallbackProvider: string;
+  fallbackModel: string;
+  fallbackApiKey: string;
   maxTokens: number;
   temperature: number;
   elevenLabsKey: string;
@@ -82,7 +86,7 @@ const tabs: TabDef[] = [
 // Which fields belong to each section (used for partial saves)
 const sectionFields: Record<SectionKey, (keyof SettingsData)[]> = {
   general: ["businessName", "businessDesc", "welcomeMessage", "tone", "language"],
-  ai: ["aiProvider", "aiModel", "aiApiKey", "maxTokens", "temperature"],
+  ai: ["aiProvider", "aiModel", "aiApiKey", "fallbackProvider", "fallbackModel", "fallbackApiKey", "maxTokens", "temperature"],
   voice: ["elevenLabsKey", "elevenLabsVoice"],
   phone: ["twilioSid", "twilioToken", "twilioPhone"],
   email: [
@@ -434,14 +438,35 @@ function AISection({
       { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
     ],
     claude: [
-      { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-      { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-      { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
+      { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
+      { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
+      { value: "claude-3-opus-20240229", label: "Claude 3 Opus" },
     ],
     ollama: [
       { value: "llama3", label: "Llama 3" },
       { value: "mistral", label: "Mistral" },
       { value: "codellama", label: "Code Llama" },
+    ],
+    groq: [
+      { value: "openai/gpt-oss-20b", label: "GPT OSS 20B (Gratuit)" },
+      { value: "openai/gpt-oss-120b", label: "GPT OSS 120B (Gratuit)" },
+      { value: "qwen/qwen3.6-27b", label: "Qwen 3.6 27B (Gratuit)" }
+    ],
+    grok: [
+      { value: "grok-3-mini", label: "Grok 3 Mini" },
+      { value: "grok-3", label: "Grok 3" },
+    ],
+    gemini: [
+      { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash (Recommandé)" },
+      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+      { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+      { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" }
+    ],
+    openrouter: [
+      { value: "openrouter/free", label: "OpenRouter Auto-Free (Recommandé)" },
+      { value: "google/gemma-4-31b-it:free", label: "Gemma 4 31B (Gratuit)" },
+      { value: "minimax/minimax-m3:free", label: "MiniMax M3 (Gratuit)" }
     ],
   };
 
@@ -461,6 +486,10 @@ function AISection({
             { value: "openai", label: "OpenAI" },
             { value: "claude", label: "Claude (Anthropic)" },
             { value: "ollama", label: "Ollama (Local)" },
+            { value: "groq", label: "Groq (Free/Fast)" },
+            { value: "gemini", label: "Google Gemini" },
+            { value: "grok", label: "Grok (xAI)" },
+            { value: "openrouter", label: "OpenRouter (Free Models)" },
           ]}
         />
       </FormField>
@@ -480,6 +509,51 @@ function AISection({
               ? "Not required for local models"
               : "Enter your API key"
           }
+        />
+      </FormField>
+      <FormField label="Fallback provider (optional)" description="Used automatically if the primary provider is unavailable or rate-limited.">
+        <SelectInput
+          value={data.fallbackProvider}
+          onChange={(v) => {
+            update("fallbackProvider", v);
+            const models = modelOptions[v];
+            if (models && models.length > 0) update("fallbackModel", models[0].value);
+          }}
+          options={[
+            { value: "", label: "No fallback" },
+            { value: "claude", label: "Claude (Anthropic)" },
+            { value: "gemini", label: "Google Gemini" },
+            { value: "grok", label: "Grok (xAI)" },
+            { value: "groq", label: "Groq" },
+            { value: "openai", label: "OpenAI" },
+            { value: "openrouter", label: "OpenRouter (Free Models)" },
+            { value: "ollama", label: "Ollama (Local)" },
+          ]}
+        />
+      </FormField>
+      {data.fallbackProvider && (
+        <>
+          <FormField label="Fallback model">
+            <SelectInput
+              value={data.fallbackModel}
+              onChange={(v) => update("fallbackModel", v)}
+              options={modelOptions[data.fallbackProvider] || []}
+            />
+          </FormField>
+          <FormField label="Fallback API key" description="For example, your Grok/xAI key. It is stored and displayed securely.">
+            <PasswordInput
+              value={data.fallbackApiKey}
+              onChange={(v) => update("fallbackApiKey", v)}
+              placeholder="Enter the fallback provider API key"
+            />
+          </FormField>
+        </>
+      )}
+      <FormField label="Legacy second API key (optional)" description="Only for rotating two keys of the same provider; leave empty when using a fallback provider.">
+        <PasswordInput
+          value={data.aiApiKeySecondary}
+          onChange={(v) => update("aiApiKeySecondary", v)}
+          placeholder="Leave empty for Claude + Grok"
         />
       </FormField>
       <FormField label="Max Tokens" description="Maximum number of tokens per AI response.">
@@ -696,7 +770,7 @@ function WhatsAppSection({
           Choose between WhatsApp Web (free, requires QR scan) or the official WhatsApp Business API (paid, more reliable).
         </p>
       </div>
-      <FormField label="Connection Mode" description="Select how Owly connects to WhatsApp.">
+      <FormField label="Connection Mode" description="Select how the platform connects to WhatsApp.">
         <SelectInput
           value={data.whatsappMode}
           onChange={(v) => update("whatsappMode", v)}
@@ -741,6 +815,10 @@ const defaultSettings: SettingsData = {
   aiProvider: "openai",
   aiModel: "gpt-4o-mini",
   aiApiKey: "",
+  aiApiKeySecondary: "",
+  fallbackProvider: "",
+  fallbackModel: "",
+  fallbackApiKey: "",
   maxTokens: 2048,
   temperature: 0.7,
   elevenLabsKey: "",
@@ -833,7 +911,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <>
-        <Header title="Settings" description="Configure your Owly instance" />
+        <Header title="Settings" description="Configure your system instance" />
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-owly-primary" />
         </div>
@@ -843,7 +921,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Header title="Settings" description="Configure your Owly instance" />
+      <Header title="Settings" description="Configure your system instance" />
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto">
           {/* Tab navigation */}

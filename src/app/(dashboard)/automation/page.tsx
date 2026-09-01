@@ -12,6 +12,7 @@ import {
   MessageSquareReply,
   Bell,
   Activity,
+  Zap,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -93,6 +94,16 @@ export default function AutomationPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [typeFilter, setTypeFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState<"rules" | "triggers">("triggers");
+
+  // ── Keyword Triggers state ──────────────────────────────────────────────
+  const [triggers, setTriggers] = useState<AutomationRuleData[]>([]);
+  const [triggersLoading, setTriggersLoading] = useState(true);
+  const [showTriggerModal, setShowTriggerModal] = useState(false);
+  const [editingTrigger, setEditingTrigger] = useState<AutomationRuleData | null>(null);
+  const [triggerForm, setTriggerForm] = useState({ keyword: "", reply: "", isActive: true });
+  const [triggerDeleteConfirm, setTriggerDeleteConfirm] = useState<string | null>(null);
+  const [savingTrigger, setSavingTrigger] = useState(false);
 
   const fetchRules = useCallback(async () => {
     try {
@@ -101,7 +112,7 @@ export default function AutomationPage() {
       const res = await fetch(`/api/automation?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setRules(data);
+        setRules(Array.isArray(data) ? data : data.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch automation rules:", error);
@@ -110,9 +121,23 @@ export default function AutomationPage() {
     }
   }, [typeFilter]);
 
-  useEffect(() => {
-    fetchRules();
-  }, [fetchRules]);
+  useEffect(() => { fetchRules(); }, [fetchRules]);
+
+  const fetchTriggers = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/automation?type=keyword_trigger&limit=100`);
+      if (res.ok) {
+        const data = await res.json();
+        setTriggers(Array.isArray(data) ? data : data.data || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch triggers:", e);
+    } finally {
+      setTriggersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchTriggers(); }, [fetchTriggers]);
 
   const getRuleType = (type: string) =>
     ruleTypes.find((t) => t.value === type) || ruleTypes[0];
@@ -305,213 +330,335 @@ export default function AutomationPage() {
         title="Automation"
         description="Set up rules to automate your support workflow"
         actions={
-          <button
-            onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2 bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark transition-colors text-sm font-medium"
-          >
-            <Plus className="h-4 w-4" />
-            Add Rule
-          </button>
+          activeTab === "rules" ? (
+            <button
+              onClick={openCreateModal}
+              className="flex items-center gap-2 px-4 py-2 bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark transition-colors text-sm font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Add Rule
+            </button>
+          ) : (
+            <button
+              onClick={() => { setEditingTrigger(null); setTriggerForm({ keyword: "", reply: "", isActive: true }); setShowTriggerModal(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark transition-colors text-sm font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Nouveau d&apos;échencheur
+            </button>
+          )
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* Filter Tabs */}
-        <div className="flex gap-1 mb-6 bg-owly-surface border border-owly-border rounded-lg p-1 w-fit">
-          {filterTabs.map((tab) => (
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="px-6 border-b border-owly-border">
+          <div className="flex gap-6">
             <button
-              key={tab.value}
-              onClick={() => setTypeFilter(tab.value)}
+              onClick={() => setActiveTab("rules")}
               className={cn(
-                "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
-                typeFilter === tab.value
-                  ? "bg-owly-primary text-white"
-                  : "text-owly-text-light hover:text-owly-text hover:bg-owly-primary-50"
+                "pb-3 text-sm font-medium border-b-2 transition-colors",
+                activeTab === "rules"
+                  ? "border-owly-primary text-owly-primary"
+                  : "border-transparent text-owly-text-light hover:text-owly-text"
               )}
             >
-              {tab.label}
+              Automation Rules
             </button>
-          ))}
+            <button
+              onClick={() => setActiveTab("triggers")}
+              className={cn(
+                "pb-3 text-sm font-medium border-b-2 transition-colors",
+                activeTab === "triggers"
+                  ? "border-owly-primary text-owly-primary"
+                  : "border-transparent text-owly-text-light hover:text-owly-text"
+              )}
+            >
+              ⚡ Déclencheurs
+            </button>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="bg-owly-surface border border-owly-border rounded-xl p-5 animate-pulse"
-              >
-                <div className="h-5 bg-owly-border rounded w-2/3 mb-3" />
-                <div className="h-4 bg-owly-border rounded w-1/3 mb-4" />
-                <div className="h-4 bg-owly-border rounded w-full mb-2" />
-                <div className="h-4 bg-owly-border rounded w-3/4" />
-              </div>
-            ))}
-          </div>
-        ) : rules.length === 0 ? (
-          <div className="bg-owly-surface border border-owly-border rounded-xl p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-owly-primary-50 mb-4">
-              <Workflow className="h-8 w-8 text-owly-primary" />
-            </div>
-            <h3 className="text-lg font-semibold text-owly-text mb-2">
-              No automation rules yet
-            </h3>
-            <p className="text-owly-text-light max-w-lg mx-auto mb-6">
-              Automation rules help you handle repetitive tasks automatically.
-              Create rules to streamline your support workflow.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto text-left">
-              <div className="flex gap-3 p-4 rounded-lg bg-owly-bg border border-owly-border">
-                <Route className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-owly-text">Auto Route</p>
-                  <p className="text-xs text-owly-text-light mt-0.5">
-                    Automatically route conversations to the right department based on message content.
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 p-4 rounded-lg bg-owly-bg border border-owly-border">
-                <Tag className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-owly-text">Auto Tag</p>
-                  <p className="text-xs text-owly-text-light mt-0.5">
-                    Automatically apply tags to conversations based on keywords or conditions.
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 p-4 rounded-lg bg-owly-bg border border-owly-border">
-                <MessageSquareReply className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-owly-text">Auto Reply</p>
-                  <p className="text-xs text-owly-text-light mt-0.5">
-                    Send automatic replies when specific conditions are met in incoming messages.
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 p-4 rounded-lg bg-owly-bg border border-owly-border">
-                <Bell className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-owly-text">Keyword Alert</p>
-                  <p className="text-xs text-owly-text-light mt-0.5">
-                    Get notified via email when specific keywords appear in conversations.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={openCreateModal}
-              className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark transition-colors text-sm font-medium"
-            >
-              <Plus className="h-4 w-4" />
-              Create Your First Rule
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {rules.map((rule) => {
-              const ruleType = getRuleType(rule.type);
-              const Icon = ruleType.icon;
-
-              return (
-                <div
-                  key={rule.id}
-                  className={cn(
-                    "bg-owly-surface border border-owly-border rounded-xl p-5 transition-all hover:shadow-md",
-                    !rule.isActive && "opacity-60"
-                  )}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div
-                        className={cn(
-                          "flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0",
-                          ruleType.color
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-semibold text-owly-text truncate">
-                          {rule.name}
-                        </h3>
-                        <span
-                          className={cn(
-                            "inline-block text-xs font-medium px-2 py-0.5 rounded-full mt-0.5",
-                            ruleType.color
-                          )}
-                        >
-                          {ruleType.label}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleToggleActive(rule)}
-                      className={cn(
-                        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0",
-                        rule.isActive ? "bg-owly-primary" : "bg-owly-border"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
-                          rule.isActive ? "translate-x-4.5" : "translate-x-0.5"
-                        )}
-                      />
-                    </button>
-                  </div>
-
-                  {rule.description && (
-                    <p className="text-xs text-owly-text-light mb-3 line-clamp-2">
-                      {rule.description}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-3 text-xs text-owly-text-light mb-4">
-                    <span className="flex items-center gap-1">
-                      <Activity className="h-3.5 w-3.5" />
-                      {rule.triggerCount} triggers
-                    </span>
-                    <span>Priority: {rule.priority}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-3 border-t border-owly-border">
-                    <button
-                      onClick={() => openEditModal(rule)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-owly-text-light hover:text-owly-primary hover:bg-owly-primary-50 rounded-lg transition-colors"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Edit
-                    </button>
-                    {deleteConfirm === rule.id ? (
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        <button
-                          onClick={() => handleDelete(rule.id)}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-owly-danger rounded-lg hover:bg-red-600 transition-colors"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(null)}
-                          className="px-3 py-1.5 text-xs font-medium text-owly-text-light hover:text-owly-text rounded-lg transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setDeleteConfirm(rule.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-owly-text-light hover:text-owly-danger hover:bg-red-50 rounded-lg transition-colors ml-auto"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </button>
+        <div className="flex-1 overflow-y-auto p-6">
+          {activeTab === "rules" ? (
+            <>
+              {/* Filter Tabs */}
+              <div className="flex gap-1 mb-6 bg-owly-surface border border-owly-border rounded-lg p-1 w-fit">
+                {filterTabs.map((tab) => (
+                  <button
+                    key={tab.value}
+                    onClick={() => setTypeFilter(tab.value)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+                      typeFilter === tab.value
+                        ? "bg-owly-primary text-white"
+                        : "text-owly-text-light hover:text-owly-text hover:bg-owly-primary-50"
                     )}
-                  </div>
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="bg-owly-surface border border-owly-border rounded-xl p-5 animate-pulse"
+                    >
+                      <div className="h-5 bg-owly-border rounded w-2/3 mb-3" />
+                      <div className="h-4 bg-owly-border rounded w-1/3 mb-4" />
+                      <div className="h-4 bg-owly-border rounded w-full mb-2" />
+                      <div className="h-4 bg-owly-border rounded w-3/4" />
+                    </div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
-        )}
+              ) : rules.length === 0 ? (
+                <div className="bg-owly-surface border border-owly-border rounded-xl p-12 text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-owly-primary-50 mb-4">
+                    <Workflow className="h-8 w-8 text-owly-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-owly-text mb-2">
+                    No automation rules yet
+                  </h3>
+                  <p className="text-owly-text-light max-w-lg mx-auto mb-6">
+                    Automation rules help you handle repetitive tasks automatically.
+                    Create rules to streamline your support workflow.
+                  </p>
+                  <button
+                    onClick={openCreateModal}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark transition-colors text-sm font-medium"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Create Your First Rule
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {rules.map((rule) => {
+                    const ruleType = getRuleType(rule.type);
+                    const Icon = ruleType.icon;
+
+                    return (
+                      <div
+                        key={rule.id}
+                        className={cn(
+                          "bg-owly-surface border border-owly-border rounded-xl p-5 transition-all hover:shadow-md",
+                          !rule.isActive && "opacity-60"
+                        )}
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className={cn(
+                                "flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0",
+                                ruleType.color
+                              )}
+                            >
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-semibold text-owly-text truncate">
+                                {rule.name}
+                              </h3>
+                              <span
+                                className={cn(
+                                  "inline-block text-xs font-medium px-2 py-0.5 rounded-full mt-0.5",
+                                  ruleType.color
+                                )}
+                              >
+                                {ruleType.label}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleToggleActive(rule)}
+                            className={cn(
+                              "relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0",
+                              rule.isActive ? "bg-owly-primary" : "bg-owly-border"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
+                                rule.isActive ? "translate-x-4.5" : "translate-x-0.5"
+                              )}
+                            />
+                          </button>
+                        </div>
+
+                        {rule.description && (
+                          <p className="text-xs text-owly-text-light mb-3 line-clamp-2">
+                            {rule.description}
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-3 text-xs text-owly-text-light mb-4">
+                          <span className="flex items-center gap-1">
+                            <Activity className="h-3.5 w-3.5" />
+                            {rule.triggerCount} triggers
+                          </span>
+                          <span>Priority: {rule.priority}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-3 border-t border-owly-border">
+                          <button
+                            onClick={() => openEditModal(rule)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-owly-text-light hover:text-owly-primary hover:bg-owly-primary-50 rounded-lg transition-colors"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          {deleteConfirm === rule.id ? (
+                            <div className="flex items-center gap-1.5 ml-auto">
+                              <button
+                                onClick={() => handleDelete(rule.id)}
+                                className="px-3 py-1.5 text-xs font-medium text-white bg-owly-danger rounded-lg hover:bg-red-600 transition-colors"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirm(null)}
+                                className="px-3 py-1.5 text-xs font-medium text-owly-text-light hover:text-owly-text rounded-lg transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setDeleteConfirm(rule.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-owly-text-light hover:text-owly-danger hover:bg-red-50 rounded-lg transition-colors ml-auto"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            /* ── TRIGGERS TAB ── */
+            <>
+              {/* Info banner */}
+              <div className="flex items-start gap-3 p-4 mb-6 rounded-xl bg-owly-primary-50 border border-owly-primary/20">
+                <Zap className="h-5 w-5 text-owly-primary flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-owly-text">Réponses instantanées par mot-clé</p>
+                  <p className="text-xs text-owly-text-light mt-0.5">
+                    Quand un utilisateur envoie exactement le mot-clé (insensible à la casse),
+                    il reçoit la réponse fixe — sans passer par l&apos;IA.
+                    Exemple&nbsp;: <code className="bg-owly-border px-1 rounded">FNE</code> → message institutionnel.
+                  </p>
+                </div>
+              </div>
+
+              {triggersLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="bg-owly-surface border border-owly-border rounded-xl p-4 animate-pulse">
+                      <div className="h-4 bg-owly-border rounded w-1/4 mb-2" />
+                      <div className="h-3 bg-owly-border rounded w-3/4" />
+                    </div>
+                  ))}
+                </div>
+              ) : triggers.length === 0 ? (
+                <div className="bg-owly-surface border border-owly-border rounded-xl p-12 text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-owly-primary-50 mb-4">
+                    <Zap className="h-8 w-8 text-owly-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-owly-text mb-2">Aucun déclencheur</h3>
+                  <p className="text-owly-text-light max-w-md mx-auto mb-6 text-sm">
+                    Créez votre premier déclencheur pour définir une réponse instantanée à un mot-clé comme <strong>FNE</strong>, <strong>bonjour</strong>, etc.
+                  </p>
+                  <button
+                    onClick={() => { setEditingTrigger(null); setTriggerForm({ keyword: "", reply: "", isActive: true }); setShowTriggerModal(true); }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark transition-colors text-sm font-medium"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Créer un déclencheur
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {triggers.map((t) => {
+                    const keyword = (t.conditions as Array<{ keyword?: string }>)[0]?.keyword ?? t.name;
+                    const reply = (t.actions as Array<{ type?: string; value?: string }>).find((a) => a.type === "reply")?.value ?? "";
+                    return (
+                      <div
+                        key={t.id}
+                        className={cn(
+                          "bg-owly-surface border border-owly-border rounded-xl p-4 flex items-start gap-4 transition-all hover:shadow-sm",
+                          !t.isActive && "opacity-60"
+                        )}
+                      >
+                        <div className="flex-shrink-0 mt-0.5">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-owly-primary-50 text-owly-primary text-sm font-bold rounded-lg font-mono border border-owly-primary/20">
+                            <Zap className="h-3.5 w-3.5" />
+                            {keyword}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-owly-text line-clamp-2 leading-relaxed" dir="auto">{reply}</p>
+                          <p className="text-xs text-owly-text-light mt-1 flex items-center gap-1">
+                            <Activity className="h-3 w-3" />
+                            {t.triggerCount} déclenchements
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={async () => {
+                              await fetch(`/api/automation/${t.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !t.isActive }) });
+                              fetchTriggers();
+                            }}
+                            className={cn("relative inline-flex h-5 w-9 items-center rounded-full transition-colors", t.isActive ? "bg-owly-primary" : "bg-owly-border")}
+                          >
+                            <span className={cn("inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform", t.isActive ? "translate-x-4.5" : "translate-x-0.5")} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingTrigger(t);
+                              const kw = (t.conditions as Array<{ keyword?: string }>)[0]?.keyword ?? "";
+                              const rp = (t.actions as Array<{ type?: string; value?: string }>).find((a) => a.type === "reply")?.value ?? "";
+                              setTriggerForm({ keyword: kw, reply: rp, isActive: t.isActive });
+                              setShowTriggerModal(true);
+                            }}
+                            className="p-1.5 text-owly-text-light hover:text-owly-primary hover:bg-owly-primary-50 rounded-lg transition-colors"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          {triggerDeleteConfirm === t.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={async () => {
+                                  await fetch(`/api/automation/${t.id}`, { method: "DELETE" });
+                                  setTriggerDeleteConfirm(null);
+                                  fetchTriggers();
+                                }}
+                                className="px-2 py-1 text-xs font-medium text-white bg-owly-danger rounded-lg"
+                              >Confirmer</button>
+                              <button onClick={() => setTriggerDeleteConfirm(null)} className="px-2 py-1 text-xs text-owly-text-light rounded-lg">Annuler</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setTriggerDeleteConfirm(t.id)}
+                              className="p-1.5 text-owly-text-light hover:text-owly-danger hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Modal */}
@@ -531,35 +678,23 @@ export default function AutomationPage() {
             </div>
 
             <div className="p-5 space-y-5">
-              {/* Name & Description */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-owly-text mb-1.5">
-                    Rule Name
-                  </label>
+                  <label className="block text-sm font-medium text-owly-text mb-1.5">Rule Name</label>
                   <input
                     type="text"
                     value={form.name}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, name: e.target.value }))
-                    }
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                     placeholder="e.g. Route billing questions"
                     className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary transition-theme"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-owly-text mb-1.5">
-                    Priority
-                  </label>
+                  <label className="block text-sm font-medium text-owly-text mb-1.5">Priority</label>
                   <input
                     type="number"
                     value={form.priority}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        priority: parseInt(e.target.value) || 0,
-                      }))
-                    }
+                    onChange={(e) => setForm((f) => ({ ...f, priority: parseInt(e.target.value) || 0 }))}
                     min={0}
                     className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary transition-theme"
                   />
@@ -567,39 +702,23 @@ export default function AutomationPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-owly-text mb-1.5">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-owly-text mb-1.5">Description</label>
                 <input
                   type="text"
                   value={form.description}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, description: e.target.value }))
-                  }
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="Brief description of what this rule does"
                   className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary transition-theme"
                 />
               </div>
 
-              {/* Type Selector */}
               <div>
-                <label className="block text-sm font-medium text-owly-text mb-1.5">
-                  Rule Type
-                </label>
+                <label className="block text-sm font-medium text-owly-text mb-1.5">Rule Type</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {ruleTypes.map((rt) => (
                     <button
                       key={rt.value}
-                      onClick={() =>
-                        setForm((f) => ({
-                          ...f,
-                          type: rt.value,
-                          actions: f.actions.map((a) => ({
-                            ...a,
-                            type: rt.value,
-                          })),
-                        }))
-                      }
+                      onClick={() => setForm((f) => ({ ...f, type: rt.value, actions: f.actions.map((a) => ({ ...a, type: rt.value })) }))}
                       className={cn(
                         "flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all",
                         form.type === rt.value
@@ -614,101 +733,37 @@ export default function AutomationPage() {
                 </div>
               </div>
 
-              {/* Conditions */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-owly-text">
-                    Conditions
-                  </label>
-                  <button
-                    onClick={addCondition}
-                    className="text-xs text-owly-primary hover:text-owly-primary-dark font-medium transition-colors"
-                  >
-                    + Add Condition
-                  </button>
+                  <label className="text-sm font-medium text-owly-text">Conditions</label>
+                  <button onClick={addCondition} className="text-xs text-owly-primary hover:text-owly-primary-dark font-medium transition-colors">+ Add Condition</button>
                 </div>
                 <div className="space-y-2">
                   {form.conditions.map((condition, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-2 p-3 bg-owly-bg border border-owly-border rounded-lg"
-                    >
-                      <select
-                        value={condition.field}
-                        onChange={(e) =>
-                          updateCondition(index, "field", e.target.value)
-                        }
-                        className="px-2.5 py-1.5 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 transition-theme"
-                      >
-                        {conditionFields.map((f) => (
-                          <option key={f.value} value={f.value}>
-                            {f.label}
-                          </option>
-                        ))}
+                    <div key={index} className="flex items-center gap-2 p-3 bg-owly-bg border border-owly-border rounded-lg">
+                      <select value={condition.field} onChange={(e) => updateCondition(index, "field", e.target.value)} className="px-2.5 py-1.5 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 transition-theme">
+                        {conditionFields.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                       </select>
-                      <select
-                        value={condition.operator}
-                        onChange={(e) =>
-                          updateCondition(index, "operator", e.target.value)
-                        }
-                        className="px-2.5 py-1.5 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 transition-theme"
-                      >
-                        {conditionOperators.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
+                      <select value={condition.operator} onChange={(e) => updateCondition(index, "operator", e.target.value)} className="px-2.5 py-1.5 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 transition-theme">
+                        {conditionOperators.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
-                      <input
-                        type="text"
-                        value={condition.value}
-                        onChange={(e) =>
-                          updateCondition(index, "value", e.target.value)
-                        }
-                        placeholder="Value..."
-                        className="flex-1 px-2.5 py-1.5 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 transition-theme"
-                      />
-                      {form.conditions.length > 1 && (
-                        <button
-                          onClick={() => removeCondition(index)}
-                          className="p-1 text-owly-text-light hover:text-owly-danger rounded transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
+                      <input type="text" value={condition.value} onChange={(e) => updateCondition(index, "value", e.target.value)} placeholder="Value..." className="flex-1 px-2.5 py-1.5 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 transition-theme" />
+                      {form.conditions.length > 1 && <button onClick={() => removeCondition(index)} className="p-1 text-owly-text-light hover:text-owly-danger rounded transition-colors"><X className="h-4 w-4" /></button>}
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Actions */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-owly-text">
-                    {getActionLabel(form.type)}
-                  </label>
-                  <button
-                    onClick={addAction}
-                    className="text-xs text-owly-primary hover:text-owly-primary-dark font-medium transition-colors"
-                  >
-                    + Add Action
-                  </button>
+                  <label className="text-sm font-medium text-owly-text">{getActionLabel(form.type)}</label>
+                  <button onClick={addAction} className="text-xs text-owly-primary hover:text-owly-primary-dark font-medium transition-colors">+ Add Action</button>
                 </div>
                 <div className="space-y-2">
                   {form.actions.map((action, index) => (
-                    <div
-                      key={index}
-                      className="flex items-start gap-2 p-3 bg-owly-bg border border-owly-border rounded-lg"
-                    >
+                    <div key={index} className="flex items-start gap-2 p-3 bg-owly-bg border border-owly-border rounded-lg">
                       {renderActionInput(action, index)}
-                      {form.actions.length > 1 && (
-                        <button
-                          onClick={() => removeAction(index)}
-                          className="p-1 mt-1 text-owly-text-light hover:text-owly-danger rounded transition-colors flex-shrink-0"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
+                      {form.actions.length > 1 && <button onClick={() => removeAction(index)} className="p-1 mt-1 text-owly-text-light hover:text-owly-danger rounded transition-colors flex-shrink-0"><X className="h-4 w-4" /></button>}
                     </div>
                   ))}
                 </div>
@@ -716,22 +771,91 @@ export default function AutomationPage() {
             </div>
 
             <div className="flex items-center justify-end gap-3 p-5 border-t border-owly-border sticky bottom-0 bg-owly-surface">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-sm font-medium text-owly-text-light hover:text-owly-text border border-owly-border rounded-lg hover:bg-owly-bg transition-colors"
-              >
-                Cancel
+              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm font-medium text-owly-text-light hover:text-owly-text border border-owly-border rounded-lg hover:bg-owly-bg transition-colors">Cancel</button>
+              <button onClick={handleSave} disabled={saving || !form.name.trim()} className="px-4 py-2 text-sm font-medium text-white bg-owly-primary rounded-lg hover:bg-owly-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors">{saving ? "Saving..." : editingRule ? "Update Rule" : "Create Rule"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Keyword Trigger Modal ── */}
+      {showTriggerModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-owly-surface border border-owly-border rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-scale-in">
+            <div className="flex items-center justify-between p-5 border-b border-owly-border sticky top-0 bg-owly-surface z-10">
+              <div className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-owly-primary" />
+                <h3 className="text-lg font-semibold text-owly-text">
+                  {editingTrigger ? "Modifier le déclencheur" : "Nouveau déclencheur"}
+                </h3>
+              </div>
+              <button onClick={() => setShowTriggerModal(false)} className="p-1.5 text-owly-text-light hover:text-owly-text hover:bg-owly-primary-50 rounded-lg transition-colors">
+                <X className="h-5 w-5" />
               </button>
+            </div>
+            <div className="p-5 space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-owly-text mb-1.5">Mot-clé <span className="text-owly-danger">*</span></label>
+                <input
+                  type="text"
+                  value={triggerForm.keyword}
+                  onChange={(e) => setTriggerForm((f) => ({ ...f, keyword: e.target.value }))}
+                  placeholder="Ex: FNE, bonjour, aide..."
+                  autoFocus
+                  className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary transition-theme font-mono"
+                />
+                <p className="text-xs text-owly-text-light mt-1">Insensible à la casse — <code className="bg-owly-border px-1 rounded">FNE</code>, <code className="bg-owly-border px-1 rounded">fne</code> et <code className="bg-owly-border px-1 rounded">Fne</code> donnent la même réponse.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-owly-text mb-1.5">Réponse automatique <span className="text-owly-danger">*</span></label>
+                <textarea
+                  value={triggerForm.reply}
+                  onChange={(e) => setTriggerForm((f) => ({ ...f, reply: e.target.value }))}
+                  placeholder="الجامعة الوطنية للتعليم FNE..."
+                  rows={5}
+                  dir="auto"
+                  className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary transition-theme resize-none"
+                />
+                <p className="text-xs text-owly-text-light mt-1">Cette réponse sera envoyée telle quelle, sans modification par l&apos;IA.</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-owly-text">Actif</p>
+                  <p className="text-xs text-owly-text-light">Désactiver pour suspendre temporairement</p>
+                </div>
+                <button
+                  onClick={() => setTriggerForm((f) => ({ ...f, isActive: !f.isActive }))}
+                  className={cn("relative inline-flex h-6 w-11 items-center rounded-full transition-colors", triggerForm.isActive ? "bg-owly-primary" : "bg-owly-border")}
+                >
+                  <span className={cn("inline-block h-4 w-4 rounded-full bg-white transition-transform", triggerForm.isActive ? "translate-x-6" : "translate-x-1")} />
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-5 border-t border-owly-border sticky bottom-0 bg-owly-surface">
+              <button onClick={() => setShowTriggerModal(false)} className="px-4 py-2 text-sm font-medium text-owly-text-light hover:text-owly-text border border-owly-border rounded-lg hover:bg-owly-bg transition-colors">Annuler</button>
               <button
-                onClick={handleSave}
-                disabled={saving || !form.name.trim()}
+                onClick={async () => {
+                  if (!triggerForm.keyword.trim() || !triggerForm.reply.trim()) return;
+                  setSavingTrigger(true);
+                  try {
+                    const payload = {
+                      name: triggerForm.keyword.trim(),
+                      description: `Réponse automatique pour "${triggerForm.keyword.trim()}"`,
+                      type: "keyword_trigger",
+                      isActive: triggerForm.isActive,
+                      conditions: [{ keyword: triggerForm.keyword.trim() }],
+                      actions: [{ type: "reply", value: triggerForm.reply.trim() }],
+                      priority: 10,
+                    };
+                    const url = editingTrigger ? `/api/automation/${editingTrigger.id}` : "/api/automation";
+                    const method = editingTrigger ? "PUT" : "POST";
+                    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+                    if (res.ok) { setShowTriggerModal(false); fetchTriggers(); }
+                  } catch (e) { console.error(e); } finally { setSavingTrigger(false); }
+                }}
+                disabled={savingTrigger || !triggerForm.keyword.trim() || !triggerForm.reply.trim()}
                 className="px-4 py-2 text-sm font-medium text-white bg-owly-primary rounded-lg hover:bg-owly-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {saving
-                  ? "Saving..."
-                  : editingRule
-                    ? "Update Rule"
-                    : "Create Rule"}
+                {savingTrigger ? "Enregistrement..." : editingTrigger ? "Mettre à jour" : "Créer le déclencheur"}
               </button>
             </div>
           </div>

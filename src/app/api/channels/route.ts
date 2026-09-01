@@ -3,21 +3,25 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 
-const CHANNEL_TYPES = ["whatsapp", "email", "phone", "sms", "telegram"];
+const CHANNEL_TYPES = ["whatsapp", "email", "phone", "sms", "telegram", "web"];
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request, "channels:read");
   if (!isAuthenticated(auth)) return auth;
 
   try {
-    const channels = await prisma.channel.findMany({
-      orderBy: { type: "asc" },
-    });
+    const [channels, settings] = await Promise.all([
+      prisma.channel.findMany({
+        orderBy: { type: "asc" },
+      }),
+      prisma.settings.findFirst({ select: { telegramBotToken: true } }),
+    ]);
 
     const channelMap = new Map(channels.map((ch) => [ch.type, ch]));
     const result = CHANNEL_TYPES.map((type) => {
       const existing = channelMap.get(type);
-      if (existing) return existing;
+      const tokenConfigured = type === "telegram" ? Boolean(settings?.telegramBotToken) : undefined;
+      if (existing) return { ...existing, tokenConfigured };
       return {
         id: null,
         type,
@@ -26,6 +30,7 @@ export async function GET(request: NextRequest) {
         status: "disconnected",
         createdAt: null,
         updatedAt: null,
+        tokenConfigured,
       };
     });
 

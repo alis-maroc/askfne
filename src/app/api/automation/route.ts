@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validTypes = ["auto_route", "auto_tag", "auto_reply", "keyword_alert"];
+    const validTypes = ["auto_route", "auto_tag", "auto_reply", "keyword_alert", "keyword_trigger"];
     if (!type || !validTypes.includes(type)) {
       return NextResponse.json(
         { error: "Invalid rule type" },

@@ -33,6 +33,10 @@ export interface AIConfig {
   provider: string;
   model: string;
   apiKey: string;
+  apiKeys?: string[];
+  fallbackProvider?: string;
+  fallbackModel?: string;
+  fallbackApiKey?: string;
   maxTokens: number;
   temperature: number;
 }

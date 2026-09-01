@@ -22,7 +22,7 @@ export default function LoginPage() {
           return;
         }
         if (data.authenticated) {
-          router.replace("/");
+          window.location.href = "/";
           return;
         }
       } catch {
@@ -53,7 +53,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace("/");
+      window.location.href = "/";
     } catch {
       setError("An unexpected error occurred. Please try again.");
       setLoading(false);
@@ -72,17 +72,17 @@ export default function LoginPage() {
     <div className="bg-owly-surface rounded-2xl shadow-lg border border-owly-border p-8">
       <div className="flex flex-col items-center mb-8">
         <Image
-          src="/owly.png"
-          alt="Owly"
-          width={56}
-          height={56}
-          className="mb-4"
+          src="/logo_fne.gif"
+          alt="FNE"
+          width={64}
+          height={64}
+          className="mb-4 rounded-xl shadow-xs object-contain"
         />
         <h1 className="text-2xl font-bold text-owly-text">
-          Welcome to Owly
+          الجامعة الوطنية للتعليم FNE
         </h1>
         <p className="text-owly-text-light text-sm mt-1">
-          Sign in to your account
+          منصة المساعد الذكي
         </p>
       </div>
 

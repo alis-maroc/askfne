@@ -97,6 +97,8 @@ export default function TicketsPage() {
   const [selectedTicket, setSelectedTicket] = useState<TicketData | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [replying, setReplying] = useState(false);
 
   // Create form state
   const [createForm, setCreateForm] = useState({
@@ -119,7 +121,7 @@ export default function TicketsPage() {
       const res = await fetch(`/api/tickets?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setTickets(data);
+        setTickets(Array.isArray(data) ? data : data.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch tickets:", error);
@@ -133,7 +135,7 @@ export default function TicketsPage() {
       const res = await fetch("/api/team/departments");
       if (res.ok) {
         const data = await res.json();
-        setDepartments(data);
+        setDepartments(Array.isArray(data) ? data : data.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch departments:", error);
@@ -207,6 +209,30 @@ export default function TicketsPage() {
       }
     } catch (error) {
       console.error("Failed to delete ticket:", error);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!selectedTicket || !replyText.trim()) return;
+    setReplying(true);
+    try {
+      const res = await fetch(`/api/tickets/${selectedTicket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reply", message: replyText.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        window.alert(data.error || "Failed to send reply");
+        return;
+      }
+      setReplyText("");
+      fetchTickets();
+    } catch (error) {
+      console.error("Failed to send customer reply:", error);
+      window.alert("Failed to send reply");
+    } finally {
+      setReplying(false);
     }
   };
 
@@ -591,6 +617,35 @@ export default function TicketsPage() {
                       <ExternalLink className="h-3.5 w-3.5 text-owly-primary" />
                     </a>
                   </div>
+                </div>
+              )}
+
+              {/* Reply to customer */}
+              {["telegram", "whatsapp"].includes(selectedTicket.conversation?.channel || "") && (
+                <div>
+                  <label className="block text-xs font-medium text-owly-text-light mb-1">
+                    {selectedTicket.conversation?.channel === "whatsapp"
+                      ? "Répondre au client sur WhatsApp"
+                      : "Répondre au client sur Telegram"}
+                  </label>
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder={
+                      selectedTicket.conversation?.channel === "whatsapp"
+                        ? "Écrire une réponse pour WhatsApp..."
+                        : "Écrire une réponse pour Telegram..."
+                    }
+                    rows={3}
+                    className="w-full text-sm px-3 py-2.5 border border-owly-border rounded-lg bg-owly-bg focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary resize-none"
+                  />
+                  <button
+                    onClick={handleSendReply}
+                    disabled={replying || !replyText.trim()}
+                    className="mt-2 px-4 py-2 text-sm font-medium bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {replying ? "Envoi en cours..." : "Envoyer la réponse"}
+                  </button>
                 </div>
               )}
 

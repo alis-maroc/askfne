@@ -1,0 +1,2537 @@
+diff --git a/Dockerfile b/Dockerfile
+index e4cf96f..be41f76 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -6,9 +6,14 @@ WORKDIR /app
+ COPY package*.json ./
+ RUN npm ci
+ 
++COPY patch_wwebjs.js ./
++RUN node patch_wwebjs.js
++
+ COPY . .
+ 
+ RUN npx prisma generate
++ENV JWT_SECRET="build_placeholder_secret"
++ENV NEXT_TELEMETRY_DISABLED=1
+ RUN npm run build
+ 
+ # ---- Runner stage ----
+@@ -17,27 +22,7 @@ FROM node:22-slim AS runner
+ LABEL org.opencontainers.image.source="https://github.com/Hesper-Labs/owly"
+ LABEL org.opencontainers.image.description="AI-powered customer support agent"
+ 
+-RUN apt-get update && apt-get install -y \
+-    chromium \
+-    fonts-liberation \
+-    libappindicator3-1 \
+-    libasound2 \
+-    libatk-bridge2.0-0 \
+-    libatk1.0-0 \
+-    libcups2 \
+-    libdbus-1-3 \
+-    libdrm2 \
+-    libgbm1 \
+-    libgtk-3-0 \
+-    libnspr4 \
+-    libnss3 \
+-    libx11-xcb1 \
+-    libxcomposite1 \
+-    libxdamage1 \
+-    libxrandr2 \
+-    xdg-utils \
+-    --no-install-recommends \
+-    && rm -rf /var/lib/apt/lists/*
++RUN apt-get update && apt-get install -y     chromium     fonts-liberation     libappindicator3-1     libasound2     libatk-bridge2.0-0     libatk1.0-0     libcups2     libdbus-1-3     libdrm2     libgbm1     libgtk-3-0     libnspr4     libnss3     libx11-xcb1     libxcomposite1     libxdamage1     libxrandr2     xdg-utils     --no-install-recommends     && rm -rf /var/lib/apt/lists/*
+ 
+ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+@@ -45,9 +30,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
+ ENV NODE_ENV=production
+ ENV PORT=3000
+ 
+-RUN addgroup --system --gid 1001 nodejs
+-RUN adduser --system --uid 1001 nextjs
+-
+ WORKDIR /app
+ 
+ COPY --from=builder /app/package*.json ./
+@@ -55,16 +37,14 @@ COPY --from=builder /app/node_modules ./node_modules
+ COPY --from=builder /app/.next ./.next
+ COPY --from=builder /app/public ./public
+ COPY --from=builder /app/prisma ./prisma
++COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+ COPY --from=builder /app/src/generated ./src/generated
+ COPY --from=builder /app/next.config.ts ./
+ 
+-RUN chown -R nextjs:nodejs /app
+-
+-USER nextjs
++RUN mkdir -p /app/.wwebjs_auth
+ 
+ EXPOSE 3000
+ 
+-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+-  CMD node -e "fetch('http://localhost:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
++HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3   CMD node -e "fetch('http://localhost:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+ 
+-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
++CMD ["sh", "-c", "mkdir -p /app/.wwebjs_auth && npx prisma migrate deploy && npm start"]
+diff --git a/README.md b/README.md
+index 4dcbad2..929422f 100644
+--- a/README.md
++++ b/README.md
+@@ -127,6 +127,22 @@ Every customer gets a unified profile across all channels -- conversations, note
+ 
+ Train your AI with your business information. Organize entries into categories, set priorities, and test responses before going live.
+ 
++You can also import a PDF document (for example a status/policy file) directly into the knowledge base as chunked entries:
++
++```bash
++# Dry run (preview extracted chunks)
++npm run kb:import-pdf -- --file ./imports/statut.pdf --category "Statuts" --dry-run
++
++# Real import + embedding index generation (if AI key is configured)
++npm run kb:import-pdf -- --file ./imports/statut.pdf --category "Statuts" --priority 8
++```
++
++Useful options:
++
++- `--chunk-size 1800` to control entry size
++- `--title-prefix "Statut 2026"` to customize generated entry titles
++- `--no-embed` to skip embedding generation
++
+ <table>
+   <tr>
+     <td width="50%">
+diff --git a/package-lock.json b/package-lock.json
+index a8d9605..bd46820 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -34,6 +34,7 @@
+         "next": "16.2.2",
+         "nodemailer": "^8.0.4",
+         "openai": "^6.33.0",
++        "pdf-parse": "^2.4.5",
+         "pg": "^8.20.0",
+         "prisma": "^7.6.0",
+         "qrcode": "^1.5.4",
+@@ -1182,9 +1183,6 @@
+       "cpu": [
+         "arm"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1201,9 +1199,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1220,9 +1215,6 @@
+       "cpu": [
+         "ppc64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1239,9 +1231,6 @@
+       "cpu": [
+         "riscv64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1258,9 +1247,6 @@
+       "cpu": [
+         "s390x"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1277,9 +1263,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1296,9 +1279,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1315,9 +1295,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1334,9 +1311,6 @@
+       "cpu": [
+         "arm"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1359,9 +1333,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1384,9 +1355,6 @@
+       "cpu": [
+         "ppc64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1409,9 +1377,6 @@
+       "cpu": [
+         "riscv64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1434,9 +1399,6 @@
+       "cpu": [
+         "s390x"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1459,9 +1421,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1484,9 +1443,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1509,9 +1465,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1659,6 +1612,190 @@
+       "integrity": "sha512-M5UknZPHRu3DEDWoipU6sE8PdkZ6Z/S+v4dD+Ke8IaNlpdSQah50lz1KtcFBa2vsdOnwbbnxJwVM4wty6udA5w==",
+       "license": "MIT"
+     },
++    "node_modules/@napi-rs/canvas": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas/-/canvas-0.1.80.tgz",
++      "integrity": "sha512-DxuT1ClnIPts1kQx8FBmkk4BQDTfI5kIzywAaMjQSXfNnra5UFU9PwurXrl+Je3bJ6BGsp/zmshVVFbCmyI+ww==",
++      "license": "MIT",
++      "workspaces": [
++        "e2e/*"
++      ],
++      "engines": {
++        "node": ">= 10"
++      },
++      "optionalDependencies": {
++        "@napi-rs/canvas-android-arm64": "0.1.80",
++        "@napi-rs/canvas-darwin-arm64": "0.1.80",
++        "@napi-rs/canvas-darwin-x64": "0.1.80",
++        "@napi-rs/canvas-linux-arm-gnueabihf": "0.1.80",
++        "@napi-rs/canvas-linux-arm64-gnu": "0.1.80",
++        "@napi-rs/canvas-linux-arm64-musl": "0.1.80",
++        "@napi-rs/canvas-linux-riscv64-gnu": "0.1.80",
++        "@napi-rs/canvas-linux-x64-gnu": "0.1.80",
++        "@napi-rs/canvas-linux-x64-musl": "0.1.80",
++        "@napi-rs/canvas-win32-x64-msvc": "0.1.80"
++      }
++    },
++    "node_modules/@napi-rs/canvas-android-arm64": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-android-arm64/-/canvas-android-arm64-0.1.80.tgz",
++      "integrity": "sha512-sk7xhN/MoXeuExlggf91pNziBxLPVUqF2CAVnB57KLG/pz7+U5TKG8eXdc3pm0d7Od0WreB6ZKLj37sX9muGOQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-darwin-arm64": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-darwin-arm64/-/canvas-darwin-arm64-0.1.80.tgz",
++      "integrity": "sha512-O64APRTXRUiAz0P8gErkfEr3lipLJgM6pjATwavZ22ebhjYl/SUbpgM0xcWPQBNMP1n29afAC/Us5PX1vg+JNQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-darwin-x64": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-darwin-x64/-/canvas-darwin-x64-0.1.80.tgz",
++      "integrity": "sha512-FqqSU7qFce0Cp3pwnTjVkKjjOtxMqRe6lmINxpIZYaZNnVI0H5FtsaraZJ36SiTHNjZlUB69/HhxNDT1Aaa9vA==",
++      "cpu": [
++        "x64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-linux-arm-gnueabihf": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm-gnueabihf/-/canvas-linux-arm-gnueabihf-0.1.80.tgz",
++      "integrity": "sha512-eyWz0ddBDQc7/JbAtY4OtZ5SpK8tR4JsCYEZjCE3dI8pqoWUC8oMwYSBGCYfsx2w47cQgQCgMVRVTFiiO38hHQ==",
++      "cpu": [
++        "arm"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-linux-arm64-gnu": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-gnu/-/canvas-linux-arm64-gnu-0.1.80.tgz",
++      "integrity": "sha512-qwA63t8A86bnxhuA/GwOkK3jvb+XTQaTiVML0vAWoHyoZYTjNs7BzoOONDgTnNtr8/yHrq64XXzUoLqDzU+Uuw==",
++      "cpu": [
++        "arm64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-linux-arm64-musl": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-musl/-/canvas-linux-arm64-musl-0.1.80.tgz",
++      "integrity": "sha512-1XbCOz/ymhj24lFaIXtWnwv/6eFHXDrjP0jYkc6iHQ9q8oXKzUX1Lc6bu+wuGiLhGh2GS/2JlfORC5ZcXimRcg==",
++      "cpu": [
++        "arm64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-linux-riscv64-gnu": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-linux-riscv64-gnu/-/canvas-linux-riscv64-gnu-0.1.80.tgz",
++      "integrity": "sha512-XTzR125w5ZMs0lJcxRlS1K3P5RaZ9RmUsPtd1uGt+EfDyYMu4c6SEROYsxyatbbu/2+lPe7MPHOO/0a0x7L/gw==",
++      "cpu": [
++        "riscv64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-linux-x64-gnu": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-gnu/-/canvas-linux-x64-gnu-0.1.80.tgz",
++      "integrity": "sha512-BeXAmhKg1kX3UCrJsYbdQd3hIMDH/K6HnP/pG2LuITaXhXBiNdh//TVVVVCBbJzVQaV5gK/4ZOCMrQW9mvuTqA==",
++      "cpu": [
++        "x64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-linux-x64-musl": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-musl/-/canvas-linux-x64-musl-0.1.80.tgz",
++      "integrity": "sha512-x0XvZWdHbkgdgucJsRxprX/4o4sEed7qo9rCQA9ugiS9qE2QvP0RIiEugtZhfLH3cyI+jIRFJHV4Fuz+1BHHMg==",
++      "cpu": [
++        "x64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@napi-rs/canvas-win32-x64-msvc": {
++      "version": "0.1.80",
++      "resolved": "https://registry.npmjs.org/@napi-rs/canvas-win32-x64-msvc/-/canvas-win32-x64-msvc-0.1.80.tgz",
++      "integrity": "sha512-Z8jPsM6df5V8B1HrCHB05+bDiCxjE9QA//3YrkKIdVDEwn5RKaqOxCJDRJkl48cJbylcrJbW4HxZbTte8juuPg==",
++      "cpu": [
++        "x64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
+     "node_modules/@napi-rs/wasm-runtime": {
+       "version": "0.2.12",
+       "resolved": "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-0.2.12.tgz",
+@@ -1727,9 +1864,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1746,9 +1880,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1765,9 +1896,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1784,9 +1912,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3528,9 +3653,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3548,9 +3670,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3568,9 +3687,6 @@
+         "ppc64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3588,9 +3704,6 @@
+         "s390x"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3608,9 +3721,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3628,9 +3738,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3902,9 +4009,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3922,9 +4026,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3942,9 +4043,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3962,9 +4060,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -4637,9 +4732,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -4654,9 +4746,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -4671,9 +4760,6 @@
+         "ppc64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -4688,9 +4774,6 @@
+         "riscv64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -4705,9 +4788,6 @@
+         "riscv64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -4722,9 +4802,6 @@
+         "s390x"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -4739,9 +4816,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -4756,9 +4830,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -9524,9 +9595,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -9548,9 +9616,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -9572,9 +9637,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -9596,9 +9658,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -10653,6 +10712,38 @@
+       "integrity": "sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==",
+       "license": "MIT"
+     },
++    "node_modules/pdf-parse": {
++      "version": "2.4.5",
++      "resolved": "https://registry.npmjs.org/pdf-parse/-/pdf-parse-2.4.5.tgz",
++      "integrity": "sha512-mHU89HGh7v+4u2ubfnevJ03lmPgQ5WU4CxAVmTSh/sxVTEDYd1er/dKS/A6vg77NX47KTEoihq8jZBLr8Cxuwg==",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@napi-rs/canvas": "0.1.80",
++        "pdfjs-dist": "5.4.296"
++      },
++      "bin": {
++        "pdf-parse": "bin/cli.mjs"
++      },
++      "engines": {
++        "node": ">=20.16.0 <21 || >=22.3.0"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/mehmet-kozan"
++      }
++    },
++    "node_modules/pdfjs-dist": {
++      "version": "5.4.296",
++      "resolved": "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-5.4.296.tgz",
++      "integrity": "sha512-DlOzet0HO7OEnmUmB6wWGJrrdvbyJKftI1bhMitK7O2N8W2gc757yyYBbINy9IDafXAV9wmKr9t7xsTaNKRG5Q==",
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=20.16.0 || >=22.3.0"
++      },
++      "optionalDependencies": {
++        "@napi-rs/canvas": "^0.1.80"
++      }
++    },
+     "node_modules/peberminta": {
+       "version": "0.9.0",
+       "resolved": "https://registry.npmjs.org/peberminta/-/peberminta-0.9.0.tgz",
+diff --git a/package.json b/package.json
+index 3b66d9f..cef635e 100644
+--- a/package.json
++++ b/package.json
+@@ -15,7 +15,9 @@
+     "db:seed": "npx tsx prisma/seed.ts",
+     "db:migrate": "npx prisma migrate dev",
+     "db:push": "npx prisma db push",
+-    "db:studio": "npx prisma studio"
++    "db:studio": "npx prisma studio",
++    "kb:import-pdf": "npx tsx scripts/import-knowledge-pdf.ts",
++    "kb:import-statuts": "npx tsx scripts/import-statuts-articles.ts"
+   },
+   "prisma": {
+     "seed": "npx tsx prisma/seed.ts"
+@@ -47,6 +49,7 @@
+     "next": "16.2.2",
+     "nodemailer": "^8.0.4",
+     "openai": "^6.33.0",
++    "pdf-parse": "^2.4.5",
+     "pg": "^8.20.0",
+     "prisma": "^7.6.0",
+     "qrcode": "^1.5.4",
+diff --git a/prisma.config.ts b/prisma.config.ts
+index 831a20f..8f121f2 100644
+--- a/prisma.config.ts
++++ b/prisma.config.ts
+@@ -1,5 +1,3 @@
+-// This file was generated by Prisma, and assumes you have installed the following:
+-// npm install --save-dev prisma dotenv
+ import "dotenv/config";
+ import { defineConfig } from "prisma/config";
+ 
+@@ -9,6 +7,6 @@ export default defineConfig({
+     path: "prisma/migrations",
+   },
+   datasource: {
+-    url: process.env["DATABASE_URL"],
++    url: process.env.DATABASE_URL || "postgresql://postgres:postgres@db:5432/owly?schema=public",
+   },
+ });
+diff --git a/src/app/(auth)/login/page.tsx b/src/app/(auth)/login/page.tsx
+index a790606..e6ff894 100644
+--- a/src/app/(auth)/login/page.tsx
++++ b/src/app/(auth)/login/page.tsx
+@@ -22,7 +22,7 @@ export default function LoginPage() {
+           return;
+         }
+         if (data.authenticated) {
+-          router.replace("/");
++          window.location.href = "/";
+           return;
+         }
+       } catch {
+@@ -53,7 +53,7 @@ export default function LoginPage() {
+         return;
+       }
+ 
+-      router.replace("/");
++      window.location.href = "/";
+     } catch {
+       setError("An unexpected error occurred. Please try again.");
+       setLoading(false);
+diff --git a/src/app/(auth)/setup/page.tsx b/src/app/(auth)/setup/page.tsx
+index c06d098..45d24d1 100644
+--- a/src/app/(auth)/setup/page.tsx
++++ b/src/app/(auth)/setup/page.tsx
+@@ -20,7 +20,7 @@ const TONE_OPTIONS = [
+ 
+ const PROVIDER_OPTIONS = [
+   { value: "openai", label: "OpenAI", models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"] },
+-  { value: "claude", label: "Claude (Anthropic)", models: ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"] },
++  { value: "claude", label: "Claude (Anthropic)", models: ["claude-sonnet-5", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"] },
+   { value: "ollama", label: "Ollama (Local)", models: ["llama3", "mistral", "codellama", "phi3"] },
+ ];
+ 
+@@ -483,7 +483,7 @@ export default function SetupPage() {
+         ) : (
+           <button
+             type="button"
+-            onClick={() => router.replace("/")}
++            onClick={() => window.location.href = "/"}
+             className="rounded-lg bg-owly-primary px-5 py-2 text-sm font-semibold text-white hover:bg-owly-primary-dark focus:outline-none focus:ring-2 focus:ring-owly-primary focus:ring-offset-2 transition-colors"
+           >
+             Go to Dashboard
+diff --git a/src/app/(dashboard)/admin/page.tsx b/src/app/(dashboard)/admin/page.tsx
+index 2a12e5a..ee9e603 100644
+--- a/src/app/(dashboard)/admin/page.tsx
++++ b/src/app/(dashboard)/admin/page.tsx
+@@ -133,7 +133,7 @@ export default function AdminPage() {
+       const res = await fetch("/api/admin/users");
+       if (res.ok) {
+         const data = await res.json();
+-        setUsers(data);
++        setUsers(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (err) {
+       console.error("Failed to fetch users:", err);
+@@ -148,7 +148,7 @@ export default function AdminPage() {
+       const res = await fetch("/api/admin/api-keys");
+       if (res.ok) {
+         const data = await res.json();
+-        setApiKeys(data);
++        setApiKeys(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (err) {
+       console.error("Failed to fetch API keys:", err);
+diff --git a/src/app/(dashboard)/automation/page.tsx b/src/app/(dashboard)/automation/page.tsx
+index 8336849..6ff21fc 100644
+--- a/src/app/(dashboard)/automation/page.tsx
++++ b/src/app/(dashboard)/automation/page.tsx
+@@ -101,7 +101,7 @@ export default function AutomationPage() {
+       const res = await fetch(`/api/automation?${params.toString()}`);
+       if (res.ok) {
+         const data = await res.json();
+-        setRules(data);
++        setRules(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (error) {
+       console.error("Failed to fetch automation rules:", error);
+diff --git a/src/app/(dashboard)/canned-responses/page.tsx b/src/app/(dashboard)/canned-responses/page.tsx
+index a648433..f385774 100644
+--- a/src/app/(dashboard)/canned-responses/page.tsx
++++ b/src/app/(dashboard)/canned-responses/page.tsx
+@@ -54,7 +54,7 @@ export default function CannedResponsesPage() {
+       const res = await fetch(`/api/canned-responses?${params.toString()}`);
+       if (res.ok) {
+         const data = await res.json();
+-        setResponses(data);
++        setResponses(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (error) {
+       console.error("Failed to fetch canned responses:", error);
+diff --git a/src/app/(dashboard)/channels/page.tsx b/src/app/(dashboard)/channels/page.tsx
+index 0bd0f81..8d16f61 100644
+--- a/src/app/(dashboard)/channels/page.tsx
++++ b/src/app/(dashboard)/channels/page.tsx
+@@ -152,19 +152,21 @@ function WhatsAppCard({
+   onAction: (type: string, action: string) => void;
+   saving: boolean;
+ }) {
+-  const cfg = channel.config as Record<string, string>;
++  const cfg = (channel.config || {}) as Record<string, string>;
+   const [isActive, setIsActive] = useState(channel.isActive);
+   const [mode, setMode] = useState<WhatsAppMode>(
+-    (cfg.mode as WhatsAppMode) || "web"
++    (cfg.mode as WhatsAppMode) || "api"
+   );
+-  const [apiKey, setApiKey] = useState(cfg.apiKey || "");
++  const [apiKey, setApiKey] = useState(cfg.apiKey || cfg.accessToken || "");
++  const [phoneNumberId, setPhoneNumberId] = useState(cfg.phoneNumberId || cfg.phoneId || "");
++  const [verifyToken, setVerifyToken] = useState(cfg.verifyToken || "owly_webhook_secret");
+   const [phoneNumber, setPhoneNumber] = useState(cfg.phoneNumber || "");
+   const [qrCode, setQrCode] = useState<string | null>(null);
+   const [connecting, setConnecting] = useState(false);
++  const [copied, setCopied] = useState(false);
+   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   const isConnected = channel.status === "connected";
+ 
+-  // Poll WhatsApp status while connecting to get QR code updates
+   useEffect(() => {
+     return () => {
+       if (pollRef.current) clearInterval(pollRef.current);
+@@ -184,7 +186,6 @@ function WhatsAppCard({
+         const data = await res.json();
+         if (data.qr) setQrCode(data.qr);
+       }
+-      // Start polling for QR code / status updates
+       if (pollRef.current) clearInterval(pollRef.current);
+       pollRef.current = setInterval(async () => {
+         try {
+@@ -198,13 +199,23 @@ function WhatsAppCard({
+               onAction("whatsapp", "connect");
+             }
+           }
+-        } catch { /* ignore polling errors */ }
+-      }, 3000);
++        } catch {}
++      }, 2000);
+     } catch {
+       setConnecting(false);
+     }
+   };
+ 
++  const webhookUrl = typeof window !== "undefined"
++    ? `${window.location.origin}/api/channels/whatsapp/webhook`
++    : "http://158.69.24.123:3000/api/channels/whatsapp/webhook";
++
++  const copyWebhook = () => {
++    navigator.clipboard.writeText(webhookUrl);
++    setCopied(true);
++    setTimeout(() => setCopied(false), 2000);
++  };
++
+   return (
+     <div className="bg-owly-surface rounded-xl border border-owly-border overflow-hidden">
+       {/* Header */}
+@@ -217,7 +228,7 @@ function WhatsAppCard({
+             <div>
+               <h3 className="font-semibold text-owly-text">WhatsApp</h3>
+               <p className="text-xs text-owly-text-light mt-0.5">
+-                Messaging via WhatsApp Web or API
++                Messaging via WhatsApp Cloud API (Meta) or Web QR
+               </p>
+             </div>
+           </div>
+@@ -238,34 +249,94 @@ function WhatsAppCard({
+           <div className="flex gap-2">
+             <button
+               type="button"
+-              onClick={() => setMode("web")}
++              onClick={() => setMode("api")}
+               className={cn(
+                 "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
+-                mode === "web"
+-                  ? "border-green-300 bg-green-50 text-green-700"
++                mode === "api"
++                  ? "border-green-300 bg-green-50 text-green-700 font-semibold"
+                   : "border-owly-border bg-owly-bg text-owly-text-light hover:bg-owly-primary-50 hover:text-owly-text"
+               )}
+             >
+-              <QrCode className="h-4 w-4" />
+-              WhatsApp Web
++              <Key className="h-4 w-4" />
++              WhatsApp Cloud API (Meta)
+             </button>
+             <button
+               type="button"
+-              onClick={() => setMode("api")}
++              onClick={() => setMode("web")}
+               className={cn(
+                 "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
+-                mode === "api"
+-                  ? "border-green-300 bg-green-50 text-green-700"
++                mode === "web"
++                  ? "border-green-300 bg-green-50 text-green-700 font-semibold"
+                   : "border-owly-border bg-owly-bg text-owly-text-light hover:bg-owly-primary-50 hover:text-owly-text"
+               )}
+             >
+-              <Key className="h-4 w-4" />
+-              API
++              <QrCode className="h-4 w-4" />
++              WhatsApp Web (QR)
+             </button>
+           </div>
+         </div>
+ 
+-        {mode === "web" ? (
++        {mode === "api" ? (
++          <div className="space-y-4">
++            <FieldInput
++              label="Meta Access Token (API Key)"
++              value={apiKey}
++              onChange={setApiKey}
++              placeholder="EAATcmstikgIBSWdVhDCT8xgEiZBEEhxQWFgL..."
++              isSecret
++            />
++
++            <FieldInput
++              label="Phone Number ID (ID de numéro Meta)"
++              value={phoneNumberId}
++              onChange={setPhoneNumberId}
++              placeholder="Ex: 105948329482910"
++            />
++
++            <FieldInput
++              label="Webhook Verify Token (Jeton de vérification)"
++              value={verifyToken}
++              onChange={setVerifyToken}
++              placeholder="owly_webhook_secret"
++            />
++
++            {/* Meta Webhook Configuration Box */}
++            <div className="p-3.5 bg-blue-50/60 border border-blue-200/80 rounded-lg space-y-2 text-xs">
++              <div className="font-semibold text-blue-900 flex items-center justify-between">
++                <span>📋 Configuration Webhook Meta :</span>
++                <button
++                  type="button"
++                  onClick={copyWebhook}
++                  className="text-blue-700 hover:text-blue-900 bg-blue-100 px-2 py-0.5 rounded font-medium text-[11px]"
++                >
++                  {copied ? "✓ Copié !" : "Copier l'URL"}
++                </button>
++              </div>
++              <div>
++                <span className="text-blue-800 font-medium">Callback URL :</span>
++                <code className="block bg-white p-2 mt-1 rounded border border-blue-200 text-blue-950 font-mono text-[11px] break-all select-all">
++                  {webhookUrl}
++                </code>
++              </div>
++              <div className="text-blue-800">
++                <span>Verify Token : </span>
++                <strong className="font-mono text-blue-950">{verifyToken || "owly_webhook_secret"}</strong>
++              </div>
++              <div className="text-blue-700 text-[11px] pt-1">
++                👉 Dans <strong>Meta Developers &gt; Configuration Webhook</strong>, collez cette URL et ce Jeton, puis cochez le champ <strong>messages</strong>.
++              </div>
++            </div>
++
++            {isConnected && (
++              <div className="rounded-lg border border-green-200 bg-green-50 p-3 flex items-center gap-2">
++                <CheckCircle className="h-4 w-4 text-green-600" />
++                <span className="text-sm text-green-700 font-medium">
++                  WhatsApp Cloud API configuré et actif
++                </span>
++              </div>
++            )}
++          </div>
++        ) : (
+           <div>
+             {isConnected ? (
+               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+@@ -275,11 +346,6 @@ function WhatsAppCard({
+                     Session Active
+                   </span>
+                 </div>
+-                {phoneNumber && (
+-                  <p className="text-sm text-green-600">
+-                    Phone: {phoneNumber}
+-                  </p>
+-                )}
+                 <button
+                   type="button"
+                   onClick={() => onAction("whatsapp", "disconnect")}
+@@ -303,17 +369,10 @@ function WhatsAppCard({
+                   ) : (
+                     <div className="text-center">
+                       <QrCode className="h-10 w-10 text-owly-text-light/40 mx-auto mb-1" />
+-                      <p className="text-xs text-owly-text-light/60">
+-                        QR Code
+-                      </p>
++                      <p className="text-xs text-owly-text-light/60">QR Code</p>
+                     </div>
+                   )}
+                 </div>
+-                <p className="text-xs text-owly-text-light text-center max-w-[220px]">
+-                  {qrCode
+-                    ? "Scan this QR code with WhatsApp on your phone to connect"
+-                    : "Click Connect to generate a QR code"}
+-                </p>
+                 <button
+                   type="button"
+                   onClick={handleConnect}
+@@ -330,30 +389,6 @@ function WhatsAppCard({
+               </div>
+             )}
+           </div>
+-        ) : (
+-          <div className="space-y-3">
+-            <FieldInput
+-              label="API Key"
+-              value={apiKey}
+-              onChange={setApiKey}
+-              placeholder="Enter your WhatsApp API key"
+-              isSecret
+-            />
+-            <FieldInput
+-              label="Phone Number"
+-              value={phoneNumber}
+-              onChange={setPhoneNumber}
+-              placeholder="+1234567890"
+-            />
+-            {isConnected && (
+-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 flex items-center gap-2">
+-                <CheckCircle className="h-4 w-4 text-green-600" />
+-                <span className="text-sm text-green-700">
+-                  API connected - Phone: {phoneNumber || "N/A"}
+-                </span>
+-              </div>
+-            )}
+-          </div>
+         )}
+       </div>
+ 
+@@ -365,7 +400,7 @@ function WhatsAppCard({
+           onClick={() =>
+             onSave(
+               "whatsapp",
+-              { mode, apiKey, phoneNumber },
++              { mode, apiKey, phoneNumberId, verifyToken, phoneNumber },
+               isActive
+             )
+           }
+@@ -383,10 +418,6 @@ function WhatsAppCard({
+   );
+ }
+ 
+-// ---------------------------------------------------------------------------
+-// Email Card
+-// ---------------------------------------------------------------------------
+-
+ function EmailCard({
+   channel,
+   onSave,
+@@ -784,7 +815,7 @@ export default function ChannelsPage() {
+       const res = await fetch("/api/channels");
+       if (!res.ok) throw new Error("Failed to fetch");
+       const data = await res.json();
+-      setChannels(data);
++      setChannels(Array.isArray(data) ? data : data.data || []);
+     } catch {
+       setFetchError("Failed to load channels. Please try refreshing the page.");
+       showToast("Failed to load channels", "error");
+diff --git a/src/app/(dashboard)/conversations/page.tsx b/src/app/(dashboard)/conversations/page.tsx
+index 3c7a61f..df484e3 100644
+--- a/src/app/(dashboard)/conversations/page.tsx
++++ b/src/app/(dashboard)/conversations/page.tsx
+@@ -107,7 +107,7 @@ export default function ConversationsPage() {
+       const res = await fetch(`/api/conversations?${params.toString()}`);
+       if (!res.ok) throw new Error("Failed to load conversations");
+       const data = await res.json();
+-      setConversations(data);
++      setConversations(Array.isArray(data) ? data : data.data || []);
+     } catch (error) {
+       console.error("Failed to fetch conversations:", error);
+       setFetchError("Failed to load conversations. Please try refreshing the page.");
+diff --git a/src/app/(dashboard)/customers/page.tsx b/src/app/(dashboard)/customers/page.tsx
+index 69b509e..3661be5 100644
+--- a/src/app/(dashboard)/customers/page.tsx
++++ b/src/app/(dashboard)/customers/page.tsx
+@@ -164,7 +164,7 @@ export default function CustomersPage() {
+         const res = await fetch(`/api/customers?${params.toString()}`);
+         if (res.ok) {
+           const data = await res.json();
+-          setCustomers(data.customers);
++          setCustomers(Array.isArray(data) ? data : (data.customers || data.data || []));
+           setPagination(data.pagination);
+         }
+       } catch (error) {
+diff --git a/src/app/(dashboard)/knowledge/page.tsx b/src/app/(dashboard)/knowledge/page.tsx
+index fcd34e5..cc6ecd5 100644
+--- a/src/app/(dashboard)/knowledge/page.tsx
++++ b/src/app/(dashboard)/knowledge/page.tsx
+@@ -121,7 +121,7 @@ export default function KnowledgeBasePage() {
+       const res = await fetch("/api/knowledge/categories");
+       if (res.ok) {
+         const data = await res.json();
+-        setCategories(data);
++        setCategories(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (err) {
+       console.error("Failed to fetch categories:", err);
+@@ -136,7 +136,7 @@ export default function KnowledgeBasePage() {
+       const res = await fetch(`/api/knowledge/entries?categoryId=${categoryId}`);
+       if (res.ok) {
+         const data = await res.json();
+-        setEntries(data);
++        setEntries(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (err) {
+       console.error("Failed to fetch entries:", err);
+diff --git a/src/app/(dashboard)/layout.tsx b/src/app/(dashboard)/layout.tsx
+index 93f168d..a876970 100644
+--- a/src/app/(dashboard)/layout.tsx
++++ b/src/app/(dashboard)/layout.tsx
+@@ -1,5 +1,7 @@
+ import { Sidebar } from "@/components/layout/sidebar";
+ 
++export const dynamic = "force-dynamic";
++
+ export default function DashboardLayout({
+   children,
+ }: {
+diff --git a/src/app/(dashboard)/settings/page.tsx b/src/app/(dashboard)/settings/page.tsx
+index 0f0cbe4..904fa29 100644
+--- a/src/app/(dashboard)/settings/page.tsx
++++ b/src/app/(dashboard)/settings/page.tsx
+@@ -434,15 +434,24 @@ function AISection({
+       { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
+     ],
+     claude: [
+-      { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+-      { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
+-      { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
++      { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
++      { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
++      { value: "claude-3-opus-20240229", label: "Claude 3 Opus" },
+     ],
+     ollama: [
+       { value: "llama3", label: "Llama 3" },
+       { value: "mistral", label: "Mistral" },
+       { value: "codellama", label: "Code Llama" },
+     ],
++    groq: [
++      { value: "openai/gpt-oss-20b", label: "GPT OSS 20B (Gratuit)" },
++      { value: "openai/gpt-oss-120b", label: "GPT OSS 120B (Gratuit)" },
++      { value: "qwen/qwen3.6-27b", label: "Qwen 3.6 27B (Gratuit)" }
++    ],
++    gemini: [
++      { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
++      { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" }
++    ],
+   };
+ 
+   return (
+@@ -461,6 +470,8 @@ function AISection({
+             { value: "openai", label: "OpenAI" },
+             { value: "claude", label: "Claude (Anthropic)" },
+             { value: "ollama", label: "Ollama (Local)" },
++            { value: "groq", label: "Groq (Free/Fast)" },
++            { value: "gemini", label: "Google Gemini" },
+           ]}
+         />
+       </FormField>
+diff --git a/src/app/(dashboard)/sla/page.tsx b/src/app/(dashboard)/sla/page.tsx
+index 2b09750..1439b88 100644
+--- a/src/app/(dashboard)/sla/page.tsx
++++ b/src/app/(dashboard)/sla/page.tsx
+@@ -73,7 +73,7 @@ export default function SLAPage() {
+       const res = await fetch("/api/sla");
+       if (res.ok) {
+         const data = await res.json();
+-        setRules(data);
++        setRules(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (error) {
+       console.error("Failed to fetch SLA rules:", error);
+diff --git a/src/app/(dashboard)/team/page.tsx b/src/app/(dashboard)/team/page.tsx
+index 7da0eef..9c46ce9 100644
+--- a/src/app/(dashboard)/team/page.tsx
++++ b/src/app/(dashboard)/team/page.tsx
+@@ -412,7 +412,7 @@ export default function TeamPage() {
+       const res = await fetch("/api/team/departments");
+       if (res.ok) {
+         const data = await res.json();
+-        setDepartments(data);
++        setDepartments(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (err) {
+       console.error("Failed to load departments:", err);
+@@ -427,7 +427,7 @@ export default function TeamPage() {
+       const res = await fetch(url);
+       if (res.ok) {
+         const data = await res.json();
+-        setMembers(data);
++        setMembers(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (err) {
+       console.error("Failed to load members:", err);
+diff --git a/src/app/(dashboard)/tickets/page.tsx b/src/app/(dashboard)/tickets/page.tsx
+index 967b4b2..9ff1d8c 100644
+--- a/src/app/(dashboard)/tickets/page.tsx
++++ b/src/app/(dashboard)/tickets/page.tsx
+@@ -119,7 +119,7 @@ export default function TicketsPage() {
+       const res = await fetch(`/api/tickets?${params.toString()}`);
+       if (res.ok) {
+         const data = await res.json();
+-        setTickets(data);
++        setTickets(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (error) {
+       console.error("Failed to fetch tickets:", error);
+@@ -133,7 +133,7 @@ export default function TicketsPage() {
+       const res = await fetch("/api/team/departments");
+       if (res.ok) {
+         const data = await res.json();
+-        setDepartments(data);
++        setDepartments(Array.isArray(data) ? data : data.data || []);
+       }
+     } catch (error) {
+       console.error("Failed to fetch departments:", error);
+diff --git a/src/app/(dashboard)/webhooks/page.tsx b/src/app/(dashboard)/webhooks/page.tsx
+index 14b1fad..51d7d6c 100644
+--- a/src/app/(dashboard)/webhooks/page.tsx
++++ b/src/app/(dashboard)/webhooks/page.tsx
+@@ -429,7 +429,7 @@ export default function WebhooksPage() {
+     try {
+       const res = await fetch("/api/webhooks");
+       const data = await res.json();
+-      setWebhooks(data);
++      setWebhooks(Array.isArray(data) ? data : data.data || []);
+     } catch {
+       // silently fail
+     } finally {
+diff --git a/src/app/api/channels/whatsapp/route.ts b/src/app/api/channels/whatsapp/route.ts
+index 3e7ede6..ba61695 100644
+--- a/src/app/api/channels/whatsapp/route.ts
++++ b/src/app/api/channels/whatsapp/route.ts
+@@ -1,23 +1,63 @@
+-import { NextResponse } from "next/server";
++import { NextResponse, NextRequest } from "next/server";
++import { prisma } from "@/lib/prisma";
++import { logger } from "@/lib/logger";
++import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+ import {
+   getWhatsAppStatus,
+-  initWhatsApp,
++  startWhatsAppInit,
+   disconnectWhatsApp,
++  getWhatsAppDiagnostics,
+ } from "@/lib/channels/whatsapp";
+ 
+-export async function GET() {
++export async function GET(request: NextRequest) {
++  const { searchParams } = new URL(request.url);
++  if (searchParams.get("diag") === "1") {
++    const diag = await getWhatsAppDiagnostics();
++    return NextResponse.json(diag);
++  }
+   const status = getWhatsAppStatus();
+   return NextResponse.json(status);
+ }
+ 
++export async function PUT(request: NextRequest) {
++  const auth = await requireAuth(request, "channels:update");
++  if (!isAuthenticated(auth)) return auth;
++
++  try {
++    const body = await request.json();
++    const { isActive, config, status } = body;
++
++    const channel = await prisma.channel.upsert({
++      where: { type: "whatsapp" },
++      update: {
++        isActive: typeof isActive === "boolean" ? isActive : undefined,
++        config: config ?? undefined,
++        status: status ?? (config?.mode === "api" ? "connected" : undefined),
++      },
++      create: {
++        type: "whatsapp",
++        isActive: typeof isActive === "boolean" ? isActive : false,
++        config: config ?? {},
++        status: status ?? (config?.mode === "api" ? "connected" : "disconnected"),
++      },
++    });
++
++    return NextResponse.json(channel);
++  } catch (error) {
++    logger.error("Failed to update WhatsApp channel:", error);
++    return NextResponse.json(
++      { error: "Failed to update WhatsApp channel" },
++      { status: 500 }
++    );
++  }
++}
++
+ export async function POST(request: Request) {
+-  const body = await request.json();
+-  const { action } = body;
++  const body = await request.json().catch(() => ({}));
++  const { action, force } = body;
+ 
+-  if (action === "connect") {
+-    await initWhatsApp();
+-    // Wait a moment for QR to generate
+-    await new Promise((resolve) => setTimeout(resolve, 2000));
++  if (action === "connect" || action === "reconnect") {
++    startWhatsAppInit(Boolean(force || action === "reconnect"));
+     const status = getWhatsAppStatus();
+     return NextResponse.json(status);
+   }
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index 0dcb88a..efd74d2 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -4,6 +4,8 @@ import { Providers } from "@/components/providers";
+ import { ThemeInit } from "@/components/theme-init";
+ import "./globals.css";
+ 
++export const dynamic = "force-dynamic";
++
+ const inter = Inter({
+   variable: "--font-geist-sans",
+   subsets: ["latin"],
+diff --git a/src/components/ui/onboarding-checklist.tsx b/src/components/ui/onboarding-checklist.tsx
+index eba38e4..4e84932 100644
+--- a/src/components/ui/onboarding-checklist.tsx
++++ b/src/components/ui/onboarding-checklist.tsx
+@@ -52,9 +52,9 @@ export function OnboardingChecklist() {
+ 
+       const auth = authRes.ok ? await authRes.json() : {};
+       const settings = settingsRes.ok ? await settingsRes.json() : {};
+-      const entries = entriesRes.ok ? await entriesRes.json() : [];
+-      const channels = channelsRes.ok ? await channelsRes.json() : [];
+-      const team = teamRes.ok ? await teamRes.json() : [];
++      const rawEntries = entriesRes.ok ? await entriesRes.json() : []; const entries = Array.isArray(rawEntries) ? rawEntries : (rawEntries.data || []);
++      const rawChannels = channelsRes.ok ? await channelsRes.json() : []; const channels = Array.isArray(rawChannels) ? rawChannels : (rawChannels.data || []);
++      const rawTeam = teamRes.ok ? await teamRes.json() : []; const team = Array.isArray(rawTeam) ? rawTeam : (rawTeam.data || []);
+ 
+       const connectedChannels = Array.isArray(channels)
+         ? channels.filter((c: { isActive: boolean }) => c.isActive)
+diff --git a/src/lib/ai/engine.ts b/src/lib/ai/engine.ts
+index e0681c3..de91fcd 100644
+--- a/src/lib/ai/engine.ts
++++ b/src/lib/ai/engine.ts
+@@ -2,6 +2,7 @@ import OpenAI from "openai";
+ import { prisma } from "@/lib/prisma";
+ import { owlyTools, executeToolCall } from "./tools";
+ import { emitNewMessage } from "@/lib/realtime";
++import { searchKnowledgeBase } from "./semantic-search";
+ import { analyzeSentiment, detectIntent, estimateConfidence, requiresHumanApproval } from "./guardrails";
+ import type {
+   AIMessage,
+@@ -10,6 +11,75 @@ import type {
+   KnowledgeItem,
+ } from "./types";
+ 
++const QUERY_STOPWORDS = new Set([
++  "what", "which", "where", "when", "how", "about",
++  "ما", "هو", "هي", "هل", "عن", "من", "في", "على", "الى", "إلى", "ل", "لو",
++  "رقم", "هاتف", "مكتب", "المكتب", "كاتب", "الكاتب", "اقليمي", "الإقليمي", "جهوي", "الجهوي",
++  "bureau", "numero", "num", "telephone", "tel", "office", "regional", "region",
++]);
++
++const CATEGORY_ROUTING_RULES: Array<{ keywords: string[]; categories: string[] }> = [
++  {
++    // Organization and offices routing
++    keywords: ["تنظيم", "التنظيم", "organisation", "organization", "office", "bureau", "مكتب", "المكاتب"],
++    categories: ["Offices", "المكاتب - إقليمي", "المكاتب - جهوي", "المكاتب - وطني"],
++  },
++  {
++    // Legal status routing
++    keywords: ["القانون الاساسي", "القانون الأساسي", "statut", "statuts", "fne"],
++    categories: ["Statuts FNE"],
++  },
++  {
++    // School-year decree routing
++    keywords: ["مقرر السنة الدراسية", "السنة الدراسية", "decret", "décret", "scolaire", "exam", "امتحان", "عطلة"],
++    categories: ["مقرر السنة الدراسية 2026-2027"],
++  },
++];
++
++function normalizeForMatch(text: string): string {
++  return text
++    .toLowerCase()
++    .replace(/[\u064b-\u065f\u0670]/g, "")
++    .replace(/[\u0640]/g, "")
++    .replace(/[^\p{L}\p{N}\s]/gu, " ")
++    .replace(/\s+/g, " ")
++    .trim();
++}
++
++function extractQueryTokens(query: string): string[] {
++  const normalized = normalizeForMatch(query);
++  const tokens = normalized.split(" ").filter((t) => t.length >= 3 && !QUERY_STOPWORDS.has(t));
++  return Array.from(new Set(tokens));
++}
++
++function toWesternDigits(input: string): string {
++  return input
++    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632))
++    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776));
++}
++
++function extractArticleNumber(query: string): number | null {
++  const normalized = toWesternDigits(normalizeForMatch(query));
++  const explicit = normalized.match(/(?:الفصل|ماده|مادة|article)\s*(\d{1,3})/i);
++  const fallback = normalized.match(/\b(\d{1,3})\b/);
++  const raw = explicit?.[1] || fallback?.[1];
++  if (!raw) return null;
++  const value = Number.parseInt(raw, 10);
++  return Number.isFinite(value) && value >= 1 && value <= 200 ? value : null;
++}
++
++function detectTargetCategories(query: string): string[] | null {
++  const normalized = normalizeForMatch(toWesternDigits(query));
++
++  for (const rule of CATEGORY_ROUTING_RULES) {
++    if (rule.keywords.some((keyword) => normalized.includes(normalizeForMatch(keyword)))) {
++      return rule.categories;
++    }
++  }
++
++  return null;
++}
++
+ function buildSystemPrompt(context: ConversationContext): string {
+   const toneGuide: Record<string, string> = {
+     friendly:
+@@ -61,14 +131,118 @@ ${context.customerName !== "Unknown" ? `- Customer name: ${context.customerName}
+ ${context.customerHistory.length > 0 ? context.customerHistory.join("\n") : "This is the customer's first interaction."}`;
+ }
+ 
+-async function getKnowledgeBase(): Promise<KnowledgeItem[]> {
++async function getKnowledgeBase(query?: string): Promise<KnowledgeItem[]> {
+   const entries = await prisma.knowledgeEntry.findMany({
+     where: { isActive: true },
+     include: { category: true },
+-    orderBy: { priority: "desc" },
++    orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
+   });
+ 
+-  return entries.map((e: { category: { name: string }; title: string; content: string; priority: number }) => ({
++  const targetCategories = query && query.trim().length > 0 ? detectTargetCategories(query) : null;
++  const routedEntries = targetCategories
++    ? entries.filter((entry) => targetCategories.includes(entry.category.name))
++    : entries;
++  const activeEntries = routedEntries.length > 0 ? routedEntries : entries;
++
++  if (query && query.trim().length > 0 && activeEntries.length > 0) {
++    const articleNumber = extractArticleNumber(query);
++    if (articleNumber !== null) {
++      const exactArticleEntries = activeEntries.filter((entry) => {
++        const metadata = entry.metadata as Record<string, unknown> | null;
++        const metaNumber = typeof metadata?.articleNumber === "number"
++          ? metadata.articleNumber
++          : typeof metadata?.articleNumber === "string"
++            ? Number.parseInt(metadata.articleNumber, 10)
++            : null;
++
++        if (metaNumber === articleNumber) return true;
++
++        const title = normalizeForMatch(entry.title);
++        const content = normalizeForMatch(entry.content);
++        return (
++          title.includes(`article ${articleNumber}`) ||
++          content.includes(`article ${articleNumber}`) ||
++          content.includes(`الفصل ${articleNumber}`)
++        );
++      });
++
++      if (exactArticleEntries.length > 0) {
++        return exactArticleEntries
++          .sort((a, b) => b.priority - a.priority)
++          .slice(0, 4)
++          .map((entry) => ({
++            category: entry.category.name,
++            title: entry.title,
++            content: entry.content,
++            priority: Math.max(entry.priority, 1000),
++          }));
++      }
++    }
++  }
++
++  if (query && query.trim().length > 0 && activeEntries.length > 0) {
++    const tokens = extractQueryTokens(query);
++    if (tokens.length > 0) {
++      const ranked = activeEntries
++        .map((entry) => {
++          const title = normalizeForMatch(entry.title);
++          const category = normalizeForMatch(entry.category?.name || "");
++          const content = normalizeForMatch(entry.content);
++
++          let score = 0;
++          for (const token of tokens) {
++            if (title.includes(token)) score += 6;
++            if (category.includes(token)) score += 3;
++            if (content.includes(token)) score += 1;
++          }
++
++          return { entry, score };
++        })
++        .filter((item) => item.score > 0)
++        .sort((a, b) => b.score - a.score || b.entry.priority - a.entry.priority)
++        .slice(0, 16);
++
++      // If we have high-quality curated content, prefer it over noisy imported text.
++      const highQuality = ranked.filter((item) => {
++        const metadata = item.entry.metadata as Record<string, unknown> | null;
++        return metadata?.quality === "high";
++      });
++
++      const selected = (highQuality.length > 0 ? highQuality : ranked).slice(0, 8);
++
++      if (selected.length > 0) {
++        return selected.map(({ entry, score }) => ({
++          category: entry.category.name,
++          title: entry.title,
++          content: entry.content,
++          priority: Math.max(entry.priority, score),
++        }));
++      }
++    }
++  }
++
++  // Prefer semantic retrieval to keep prompt context focused and reduce token usage.
++  if (query && query.trim().length > 0) {
++    try {
++      const semanticResults = await searchKnowledgeBase(query, 8);
++      const filteredSemantic = targetCategories
++        ? semanticResults.filter((item) => targetCategories.includes(item.category))
++        : semanticResults;
++
++      if (filteredSemantic.length > 0) {
++        return filteredSemantic.map((item) => ({
++          category: item.category,
++          title: item.title,
++          content: item.content,
++          priority: Math.round(item.score * 100),
++        }));
++      }
++    } catch (_error) {
++      // Fallback to priority-based retrieval below.
++    }
++  }
++
++  return activeEntries.slice(0, 8).map((e: { category: { name: string }; title: string; content: string; priority: number }) => ({
+     category: e.category.name,
+     title: e.title,
+     content: e.content,
+@@ -113,7 +287,8 @@ export async function chat(
+   const conversation = await prisma.conversation.findUnique({
+     where: { id: conversationId },
+     include: {
+-      messages: { orderBy: { createdAt: "asc" }, take: 50 },
++      // Pull the latest messages first to avoid stale context from old conversations.
++      messages: { orderBy: { createdAt: "desc" }, take: 50 },
+     },
+   });
+ 
+@@ -121,7 +296,22 @@ export async function chat(
+     return "Conversation not found.";
+   }
+ 
+-  const knowledgeBase = await getKnowledgeBase();
++  const conversationMetadata = (conversation.metadata ?? {}) as Record<string, unknown>;
++  const selectedMenuChoice = typeof conversationMetadata.selectedMenuChoice === "string"
++    ? conversationMetadata.selectedMenuChoice
++    : null;
++
++  const categoryHintByMenuChoice: Record<string, string> = {
++    "1": "organisation bureaux المكاتب",
++    "2": "القانون الأساسي statuts fne",
++    "3": "مقرر السنة الدراسية",
++  };
++
++  const retrievalQuery = selectedMenuChoice && categoryHintByMenuChoice[selectedMenuChoice]
++    ? `${categoryHintByMenuChoice[selectedMenuChoice]} ${userMessage}`
++    : userMessage;
++
++  const knowledgeBase = await getKnowledgeBase(retrievalQuery);
+ 
+   const context: ConversationContext = {
+     ...config,
+@@ -136,7 +326,7 @@ export async function chat(
+     { role: "system", content: buildSystemPrompt(context) },
+   ];
+ 
+-  for (const msg of conversation.messages) {
++  for (const msg of [...conversation.messages].reverse()) {
+     if (msg.role === "customer") {
+       messages.push({ role: "user", content: msg.content });
+     } else if (msg.role === "assistant") {
+@@ -166,13 +356,14 @@ export async function chat(
+   }
+ 
+   // Save user message
+-  await prisma.message.create({
++  const savedUserMsg = await prisma.message.create({
+     data: {
+       conversationId,
+       role: "customer",
+-      content: userMessage,
++      content: userMessage || "[Empty Message]",
+     },
+   });
++  emitNewMessage(conversationId, { id: savedUserMsg.id, role: "customer", content: userMessage || "[Empty Message]" });
+ 
+   // Call AI
+   const response = await callAI(config, messages, conversationId);
+@@ -206,6 +397,55 @@ export async function chat(
+   return response;
+ }
+ 
++export function buildAnthropicRequest(
++  config: AIConfig,
++  messages: AIMessage[]
++): {
++  model: string;
++  max_tokens: number;
++  system?: string;
++  messages: Array<{ role: "user" | "assistant"; content: string }>;
++} {
++  const systemParts: string[] = [];
++  const payloadMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
++
++  for (const message of messages) {
++    if (message.role === "system") {
++      if (message.content) {
++        systemParts.push(message.content);
++      }
++      continue;
++    }
++
++    const content = message.tool_calls?.length
++      ? message.tool_calls
++          .map((toolCall) => `Tool: ${toolCall.function.name}\nArguments: ${toolCall.function.arguments}`)
++          .join("\n\n")
++      : message.content;
++
++    if (!content) continue;
++
++    payloadMessages.push({
++      role: message.role === "assistant" || message.role === "tool" ? "assistant" : "user",
++      content,
++    });
++  }
++
++  const request: {
++    model: string;
++    max_tokens: number;
++    system?: string;
++    messages: Array<{ role: "user" | "assistant"; content: string }>;
++  } = {
++    model: config.model,
++    max_tokens: config.maxTokens,
++    ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
++    messages: payloadMessages,
++  };
++
++  return request;
++}
++
+ async function callAI(
+   config: AIConfig,
+   messages: AIMessage[],
+@@ -216,7 +456,74 @@ async function callAI(
+     return "I apologize, but I'm having trouble processing your request. Let me connect you with a team member.";
+   }
+ 
+-  const openai = new OpenAI({ apiKey: config.apiKey });
++  const provider = config.provider.toLowerCase();
++
++  if (provider === "anthropic" || provider === "claude") {
++    const requestBody = buildAnthropicRequest(config, messages);
++
++    try {
++      const sendAnthropic = async (body: {
++        model: string;
++        max_tokens: number;
++        system?: string;
++        messages: Array<{ role: "user" | "assistant"; content: string }>;
++      }) => {
++        return fetch("https://api.anthropic.com/v1/messages", {
++          method: "POST",
++          headers: {
++            "Content-Type": "application/json",
++            "x-api-key": config.apiKey,
++            "anthropic-version": "2023-06-01",
++          },
++          body: JSON.stringify(body),
++        });
++      };
++
++      let response = await sendAnthropic(requestBody);
++
++      if (!response.ok) {
++        const errorText = await response.text();
++        const shouldFallbackModel =
++          response.status === 404 &&
++          errorText.includes("not_found_error") &&
++          errorText.includes("model:") &&
++          requestBody.model !== "claude-sonnet-5";
++
++        if (shouldFallbackModel) {
++          console.warn(`[Anthropic API Warning] Model not found (${requestBody.model}), retrying with claude-sonnet-5`);
++          response = await sendAnthropic({ ...requestBody, model: "claude-sonnet-5" });
++        }
++
++        if (!response.ok) {
++          const retryErrorText = await response.text();
++          console.error("[Anthropic API Error]", retryErrorText || errorText);
++          return "I'm temporarily unable to process your request. Please try again in a moment, or I can connect you with a team member.";
++        }
++
++      }
++
++      const data = await response.json() as { content?: Array<{ type?: string; text?: string }> };
++      const text = data.content
++        ?.map((part) => part.text ?? "")
++        .filter(Boolean)
++        .join("\n") || "I apologize, I could not generate a response.";
++
++      return text;
++    } catch (err: any) {
++      console.error("[Anthropic Engine Error]", err?.message || err);
++      return "I'm temporarily unable to process your request. Please try again in a moment, or I can connect you with a team member.";
++    }
++  }
++
++  let baseURL = undefined;
++  if (config.provider === 'groq') {
++    baseURL = 'https://api.groq.com/openai/v1';
++  } else if (config.provider === 'gemini') {
++    baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
++  } else if (config.provider === 'openrouter') {
++    baseURL = 'https://openrouter.ai/api/v1';
++  }
++  const openai = new OpenAI({ apiKey: config.apiKey, baseURL });
+ 
+   let response;
+   try {
+@@ -227,7 +534,8 @@ async function callAI(
+       max_tokens: config.maxTokens,
+       temperature: config.temperature,
+     });
+-  } catch {
++  } catch (err: any) {
++    console.error("[AI Engine Error]", err?.message || err);
+     return "I'm temporarily unable to process your request. Please try again in a moment, or I can connect you with a team member.";
+   }
+ 
+diff --git a/src/lib/auth.ts b/src/lib/auth.ts
+index 0e5895c..751e437 100644
+--- a/src/lib/auth.ts
++++ b/src/lib/auth.ts
+@@ -4,13 +4,7 @@ import { prisma } from "@/lib/prisma";
+ import { cookies } from "next/headers";
+ 
+ function getJwtSecret(): string {
+-  const secret = process.env.JWT_SECRET;
+-  if (!secret && process.env.NODE_ENV !== "test") {
+-    throw new Error(
+-      "JWT_SECRET environment variable is required. Set it before starting the application."
+-    );
+-  }
+-  return secret || "test-only-fallback-secret";
++  return process.env.JWT_SECRET || "test-only-fallback-secret";
+ }
+ 
+ const JWT_SECRET = getJwtSecret();
+@@ -68,7 +62,7 @@ export function setAuthCookie(token: string) {
+     name: TOKEN_NAME,
+     value: token,
+     httpOnly: true,
+-    secure: process.env.NODE_ENV === "production",
++    secure: process.env.COOKIE_SECURE === "true",
+     sameSite: "lax" as const,
+     maxAge: 60 * 60 * 24 * 7, // 7 days
+     path: "/",
+diff --git a/src/lib/channels/whatsapp.ts b/src/lib/channels/whatsapp.ts
+index 7f5bb63..3e3a245 100644
+--- a/src/lib/channels/whatsapp.ts
++++ b/src/lib/channels/whatsapp.ts
+@@ -4,166 +4,535 @@ import { prisma } from "@/lib/prisma";
+ import { chat, createNewConversation } from "@/lib/ai/engine";
+ import { logger } from "@/lib/logger";
+ import { resolveCustomer } from "@/lib/customer-resolver";
++import fs from "fs";
++import path from "path";
++import { execSync } from "child_process";
++
++const AUTH_DATA_PATH = path.join(process.cwd(), ".wwebjs_auth");
++const SESSION_PATH = path.join(AUTH_DATA_PATH, "session");
++const MODERN_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+ 
+ let whatsappClient: Client | null = null;
+ let currentQR: string | null = null;
++let qrTimestamp: number = 0;
+ let connectionStatus: "disconnected" | "qr_ready" | "connecting" | "connected" | "error" = "disconnected";
+ let statusMessage = "";
++let isStarting = false;
++let isSyncing = false;
++
++const MESSAGE_DEDUP_TTL_MS = 2 * 60 * 1000;
++const processedInboundMessages = new Map<string, number>();
++
++const WHATSAPP_MENU_TEXT = [
++  "مرحبا بك! المرجو اختيار خدمة:",
++  "1 - المكاتب",
++  "2 - القانون الأساسي",
++  "3 - مقرر السنة الدراسية",
++  "0 - الرجوع إلى القائمة الرئيسية",
++  "",
++  "المرجو الرد برقم واحد فقط: 1 أو 2 أو 3 أو 0.",
++].join("\n");
++
++const MENU_LABELS: Record<string, string> = {
++  "1": "المكاتب",
++  "2": "القانون الأساسي",
++  "3": "مقرر السنة الدراسية",
++};
++
++function normalizeMenuChoice(input: string): "0" | "1" | "2" | "3" | null {
++  const trimmed = input.trim();
++  if (!trimmed) return null;
++
++  const westernDigits = trimmed
++    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632))
++    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776));
++
++  const match = westernDigits.match(/^([0123])$/);
++  const value = match?.[1];
++  return value === "0" || value === "1" || value === "2" || value === "3" ? value : null;
++}
++
++function getMessageDedupKey(message: Message): string {
++  const maybeSerialized = (message as any)?.id?._serialized;
++  if (typeof maybeSerialized === "string" && maybeSerialized.length > 0) {
++    return maybeSerialized;
++  }
++
++  const maybeDataId = (message as any)?._data?.id;
++  if (typeof maybeDataId === "string" && maybeDataId.length > 0) {
++    return maybeDataId;
++  }
++
++  return `${message.from}|${message.timestamp}|${message.body || "[media]"}`;
++}
++
++function isDuplicateInboundMessage(message: Message): boolean {
++  const now = Date.now();
++
++  // Opportunistic cleanup to keep memory bounded.
++  for (const [key, ts] of processedInboundMessages) {
++    if (now - ts > MESSAGE_DEDUP_TTL_MS) {
++      processedInboundMessages.delete(key);
++    }
++  }
++
++  const key = getMessageDedupKey(message);
++  const seenAt = processedInboundMessages.get(key);
++  if (seenAt && now - seenAt < MESSAGE_DEDUP_TTL_MS) {
++    return true;
++  }
++
++  processedInboundMessages.set(key, now);
++  return false;
++}
++
++// Global lock file to prevent multiple Next.js workers from spawning duplicate WA instances
++const LOCK_FILE = path.join(process.cwd(), ".wwebjs_auth", "wa_worker.lock");
++const WORKER_ID = `${process.pid}`;
++
++function acquireWorkerLock(forceTakeover: boolean = false): boolean {
++  try {
++    // 1. If lock exists, keep it only when we already own it.
++    // In containerized runtimes PID liveness checks can be unreliable, so
++    // we aggressively recover the lock file to avoid permanent QR deadlocks.
++    if (fs.existsSync(LOCK_FILE)) {
++      try {
++        const existingPid = fs.readFileSync(LOCK_FILE, "utf8").trim();
++        if (existingPid === WORKER_ID) return true; // We already own it
++        if (forceTakeover || existingPid !== WORKER_ID) {
++          try { fs.unlinkSync(LOCK_FILE); } catch (_) {}
++        }
++      } catch (err) {
++        // File is corrupt or unreadable, remove it and try to acquire.
++        try { fs.unlinkSync(LOCK_FILE); } catch (_) {}
++      }
++    }
++    // 2. Atomic lock acquisition using 'wx' flag (fails if file already exists)
++    try {
++      const fd = fs.openSync(LOCK_FILE, 'wx');
++      fs.writeSync(fd, WORKER_ID);
++      fs.closeSync(fd);
++      return true;
++    } catch (e: any) {
++      if (e.code === 'EEXIST') {
++        return false; // Another worker created the file just now (race condition prevented!)
++      }
++      return false;
++    }
++  } catch (_) {
++    return false;
++  }
++}
++
++function releaseWorkerLock(): void {
++  try {
++    if (fs.existsSync(LOCK_FILE)) {
++      const pid = fs.readFileSync(LOCK_FILE, "utf8").trim();
++      if (pid === WORKER_ID) fs.unlinkSync(LOCK_FILE);
++    }
++  } catch (_) {}
++}
++
++function killChromiumProcesses() {
++  try {
++    execSync("pkill -9 -f chromium 2>/dev/null || true");
++    execSync("sleep 1");
++  } catch (_) {}
++}
++
++function cleanSession() {
++  try {
++    if (fs.existsSync(SESSION_PATH)) {
++      execSync(`rm -rf "${SESSION_PATH}" 2>/dev/null || true`);
++      logger.info("[WhatsApp] Cleaned session directory");
++    }
++  } catch (err) {
++    logger.error("[WhatsApp] Error cleaning session: " + String(err));
++  }
++}
+ 
+ export function getWhatsAppStatus() {
++  const qrAgeSeconds = qrTimestamp > 0 ? Math.round((Date.now() - qrTimestamp) / 1000) : 0;
+   return {
+     status: connectionStatus,
+     qr: currentQR,
++    qrAge: qrAgeSeconds,
++    isSyncing,
+     message: statusMessage,
+   };
+ }
+ 
+-export async function initWhatsApp(): Promise<void> {
+-  if (whatsappClient) {
+-    logger.info("[WhatsApp] Client already exists");
++export async function getWhatsAppDiagnostics() {
++  if (!whatsappClient || !whatsappClient.pupPage) {
++    return { hasClient: false, status: connectionStatus, isSyncing };
++  }
++  try {
++    const url = whatsappClient.pupPage.url();
++    const title = await whatsappClient.pupPage.title().catch(() => "unknown");
++    const pageState = await whatsappClient.pupPage.evaluate(() => {
++      const authStore = (window as any).AuthStore;
++      return {
++        hasAuthStore: typeof authStore !== "undefined",
++        appState: authStore?.AppState?.state || "none",
++        hasSynced: authStore?.AppState?.hasSynced || false,
++        hasStore: typeof (window as any).Store !== "undefined",
++        hasCanvas: !!document.querySelector("canvas"),
++        hasChats: !!document.querySelector('[data-testid="chat-list"]') || !!document.querySelector("#pane-side"),
++        bodyText: document.body ? document.body.innerText.substring(0, 200) : "",
++      };
++    }).catch((e: any) => ({ evalError: String(e?.message || e) }));
++    return { hasClient: true, status: connectionStatus, isSyncing, url, title, pageState };
++  } catch (err: any) {
++    return { hasClient: true, status: connectionStatus, isSyncing, error: err.message };
++  }
++}
++
++export function startWhatsAppInit(force: boolean = false): void {
++  if (connectionStatus === "connected" && !force) {
++    logger.info("[WhatsApp] Already connected");
++    return;
++  }
++  if (isSyncing && !force) {
++    logger.info("[WhatsApp] Sync in progress, ignoring reset");
++    return;
++  }
++  if (isStarting && !force) {
++    logger.info("[WhatsApp] Starting in progress");
++    return;
++  }
++
++  initWhatsApp(force).catch((err) => {
++    logger.error("[WhatsApp] Unhandled init error: " + String(err));
++    isStarting = false;
++    isSyncing = false;
++    connectionStatus = "error";
++    statusMessage = "Initialization error: " + String(err);
++  });
++}
++
++export async function forceReconnect(): Promise<void> {
++  startWhatsAppInit(true);
++}
++
++async function initWhatsApp(force: boolean = false): Promise<void> {
++  // Only one worker should manage WhatsApp to avoid duplicate sessions
++  if (!acquireWorkerLock(force)) {
++    logger.info("[WhatsApp] Another worker owns the lock, skipping init (PID: " + process.pid + ")");
+     return;
+   }
++  logger.info("[WhatsApp] Worker lock acquired (PID: " + process.pid + ")");
+ 
++  isStarting = true;
++  isSyncing = false;
+   connectionStatus = "connecting";
+-  statusMessage = "Initializing WhatsApp client...";
++  statusMessage = "Starting WhatsApp engine...";
++  currentQR = null;
++  qrTimestamp = 0;
++
++  if (whatsappClient) {
++    try {
++      whatsappClient.removeAllListeners();
++      await whatsappClient.destroy();
++    } catch (_) {}
++    whatsappClient = null;
++  }
++
++  killChromiumProcesses();
++
++  if (force) {
++    cleanSession();
++  }
++
++  // Clear stale lock files before launch
++  try {
++    if (fs.existsSync(SESSION_PATH)) {
++      execSync(`find "${SESSION_PATH}" -name "Singleton*" -delete 2>/dev/null || true`);
++    }
++  } catch (_) {}
++
++  logger.info("[WhatsApp] Launching Chromium session");
+ 
+   const client = new Client({
+-    authStrategy: new LocalAuth({ dataPath: ".wwebjs_auth" }),
++    authStrategy: new LocalAuth({ dataPath: AUTH_DATA_PATH }),
++    authTimeoutMs: 180000,
++    userAgent: MODERN_USER_AGENT,
+     puppeteer: {
+       headless: true,
++      protocolTimeout: 180000,
++      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
+       args: [
+         "--no-sandbox",
+         "--disable-setuid-sandbox",
+         "--disable-dev-shm-usage",
++        "--disable-accelerated-2d-canvas",
++        "--no-first-run",
++        "--no-zygote",
+         "--disable-gpu",
++        `--user-agent=${MODERN_USER_AGENT}`,
+       ],
+     },
+   });
+ 
+   client.on("qr", async (qr: string) => {
+-    logger.info("[WhatsApp] QR code received");
+-    currentQR = await qrcode.toDataURL(qr);
+-    connectionStatus = "qr_ready";
+-    statusMessage = "Scan the QR code with WhatsApp on your phone";
++    logger.info("[WhatsApp] Fresh QR code received!");
++    try {
++      currentQR = await qrcode.toDataURL(qr);
++      qrTimestamp = Date.now();
++      connectionStatus = "qr_ready";
++      statusMessage = "Scan the QR code with WhatsApp on your phone";
++      isStarting = false;
++      isSyncing = false;
++    } catch (err) {
++      logger.error("[WhatsApp] QR gen error: " + String(err));
++    }
+   });
+ 
+-  client.on("ready", async () => {
+-    logger.info("[WhatsApp] Client is ready");
++  client.on("loading_screen", (percent: number, message: string) => {
++    logger.info(`[WhatsApp] Loading chats: ${percent}% - ${message}`);
++    statusMessage = `Synchronisation des discussions (${percent}%)...`;
++    connectionStatus = "connecting";
++    isSyncing = true;
+     currentQR = null;
+-    connectionStatus = "connected";
+-    statusMessage = "Connected to WhatsApp";
+-
+-    await prisma.channel.upsert({
+-      where: { type: "whatsapp" },
+-      update: { isActive: true, status: "connected" },
+-      create: { type: "whatsapp", isActive: true, status: "connected" },
+-    });
+   });
+ 
+   client.on("authenticated", () => {
+-    logger.info("[WhatsApp] Authenticated");
++    logger.info("[WhatsApp] Authenticated successfully!");
++    currentQR = null;
++    qrTimestamp = 0;
++    isSyncing = true;
+     connectionStatus = "connecting";
+-    statusMessage = "Authenticated, loading chats...";
++    statusMessage = "Authentification réussie ! Synchronisation des discussions...";
++    // Fallback: force connected if ready event never fires within 45s
++    const _readyFallback = setTimeout(async () => {
++      if (connectionStatus === "connecting" && isSyncing) {
++        logger.info("[WhatsApp] Fallback: forcing connected after 45s without ready event");
++        isStarting = false;
++        isSyncing = false;
++        connectionStatus = "connected";
++        statusMessage = "Connected to WhatsApp. Agent is active!";
++        try {
++          await prisma.channel.upsert({
++            where: { type: "whatsapp" },
++            update: { isActive: true, status: "connected" },
++            create: { type: "whatsapp", isActive: true, status: "connected" },
++          });
++        } catch (_err) {}
++      }
++    }, 45000);
+   });
+ 
+-  client.on("auth_failure", (message: string) => {
+-    logger.error(`[WhatsApp] Auth failure: ${message}`);
++  client.on("ready", async () => {
++    logger.info("[WhatsApp] READY! Agent is now live!");
++    isStarting = false;
++    isSyncing = false;
++    currentQR = null;
++    qrTimestamp = 0;
++    connectionStatus = "connected";
++    statusMessage = "Connected to WhatsApp. Agent is active!";
++
++    try {
++      await prisma.channel.upsert({
++        where: { type: "whatsapp" },
++        update: { isActive: true, status: "connected" },
++        create: { type: "whatsapp", isActive: true, status: "connected" },
++      });
++    } catch (err) {
++      logger.error("[WhatsApp] DB update error: " + String(err));
++    }
++  });
++
++  client.on("auth_failure", (msg: string) => {
++    logger.error("[WhatsApp] Auth failure: " + String(msg));
++    isStarting = false;
++    isSyncing = false;
+     connectionStatus = "error";
+-    statusMessage = `Authentication failed: ${message}`;
++    statusMessage = "Authentication failed: " + String(msg);
++    whatsappClient = null;
++    cleanSession();
+   });
+ 
+   client.on("disconnected", async (reason: string) => {
+-    logger.info(`[WhatsApp] Disconnected: ${reason}`);
++    logger.info("[WhatsApp] Disconnected: " + String(reason));
++    releaseWorkerLock();
++    isStarting = false;
++    isSyncing = false;
+     connectionStatus = "disconnected";
+-    statusMessage = `Disconnected: ${reason}`;
++    statusMessage = "Disconnected: " + String(reason);
+     whatsappClient = null;
++    currentQR = null;
++    qrTimestamp = 0;
+ 
+-    await prisma.channel.upsert({
+-      where: { type: "whatsapp" },
+-      update: { isActive: false, status: "disconnected" },
+-      create: { type: "whatsapp", isActive: false, status: "disconnected" },
+-    });
++    if (String(reason).toUpperCase().includes("LOGOUT")) {
++      cleanSession();
++    }
++
++    try {
++      await prisma.channel.upsert({
++        where: { type: "whatsapp" },
++        update: { isActive: false, status: "disconnected" },
++        create: { type: "whatsapp", isActive: false, status: "disconnected" },
++      });
++    } catch (_) {}
+   });
+ 
+-  client.on("message", async (message: Message) => {
++  client.on("message_create", async (message: Message) => {
+     try {
+-      if (message.fromMe) return;
++      logger.info(`[WhatsApp DEBUG] raw message event: from=${message.from} fromMe=${message.fromMe} body=${message.body}`);
++      if (message.fromMe) {
++          logger.info("[WhatsApp DEBUG] Ignored because fromMe is true (User messaging themselves?)");
++          return;
++      }
++        if (isDuplicateInboundMessage(message)) {
++          logger.info("[WhatsApp DEBUG] Ignored duplicate inbound message event");
++          return;
++        }
++      if (!message.body && !message.hasMedia) {
++        logger.info("[WhatsApp] Ignored empty system/sync message");
++        return;
++      }
+ 
+-      const contact = await message.getContact();
+-      const customerName = contact.pushname || contact.name || "Unknown";
++      // Avoid getContact() as it frequently causes Puppeteer ProtocolError timeouts
++      const notifyName = (message as any)._data?.notifyName;
++      const customerName = notifyName || "Unknown";
+       const customerContact = message.from;
+ 
+-      // Resolve customer identity across channels
+       const customerId = await resolveCustomer("whatsapp", customerContact, customerName);
+ 
+-      // Find or create conversation
+       let conversation = await prisma.conversation.findFirst({
+         where: {
+           channel: "whatsapp",
+           status: { in: ["active", "escalated"] },
+-          OR: [
+-            { customerId },
+-            { customerContact },
+-          ],
++          OR: [{ customerId }, { customerContact }],
+         },
+       });
+ 
++      const isNewConversation = !conversation;
+       if (!conversation) {
+-        conversation = await createNewConversation(
+-          "whatsapp",
+-          customerName,
+-          customerContact,
+-          customerId
+-        );
++        conversation = await createNewConversation("whatsapp", customerName, customerContact, customerId);
+       }
+ 
+       let messageContent = message.body;
+ 
+-      // Handle media messages
+       if (message.hasMedia) {
+         const media = await message.downloadMedia();
+         if (media) {
+           const mediaType = media.mimetype.split("/")[0];
+-          messageContent = `[${mediaType} attachment: ${media.filename || "media"}] ${message.body || ""}`;
++          messageContent = mediaType === "audio"
++            ? `[Voice message received] ${message.body || ""}`
++            : `[${mediaType} attachment] ${message.body || ""}`;
++        }
++      }
++
++      const rawMetadata = (conversation.metadata ?? {}) as Record<string, unknown>;
++      const metadata = typeof rawMetadata === "object" && rawMetadata !== null ? rawMetadata : {};
++      const menuShown = metadata.menuShown === true;
++      const awaitingMenuChoice = metadata.awaitingMenuChoice === true;
++
++      if (isNewConversation || !menuShown) {
++        await prisma.conversation.update({
++          where: { id: conversation.id },
++          data: {
++            metadata: {
++              ...metadata,
++              menuShown: true,
++              awaitingMenuChoice: true,
++            },
++          },
++        });
++
++        await message.reply(WHATSAPP_MENU_TEXT);
++        logger.info(`[WhatsApp] Sent menu to ${customerContact}`);
++        return;
++      }
++
++      const directChoice = normalizeMenuChoice(messageContent);
++
++      if (!awaitingMenuChoice && directChoice === "0") {
++        await prisma.conversation.update({
++          where: { id: conversation.id },
++          data: {
++            metadata: {
++              ...metadata,
++              menuShown: true,
++              awaitingMenuChoice: true,
++            },
++          },
++        });
+ 
+-          if (mediaType === "audio") {
+-            messageContent = `[Voice message received] ${message.body || ""}`;
+-          }
++        await message.reply(WHATSAPP_MENU_TEXT);
++        logger.info(`[WhatsApp] Menu reset requested by ${customerContact}`);
++        return;
++      }
++
++      if (awaitingMenuChoice) {
++        const choice = directChoice;
++        if (!choice || choice === "0") {
++          await message.reply(`اختيار غير صالح. المرجو الرد برقم 1 أو 2 أو 3.\n\n${WHATSAPP_MENU_TEXT}`);
++          logger.info(`[WhatsApp] Invalid menu choice from ${customerContact}: ${messageContent}`);
++          return;
+         }
++
++        await prisma.conversation.update({
++          where: { id: conversation.id },
++          data: {
++            metadata: {
++              ...metadata,
++              menuShown: true,
++              awaitingMenuChoice: false,
++              selectedMenuChoice: choice,
++              selectedMenuLabel: MENU_LABELS[choice],
++            },
++          },
++        });
++
++        await message.reply(`تم اختيار: ${MENU_LABELS[choice]}.\nالآن أرسل سؤالك.\n\nلإظهار القائمة من جديد أرسل 0.`);
++        logger.info(`[WhatsApp] Menu choice selected by ${customerContact}: ${choice}`);
++        return;
+       }
+ 
+-      // Get AI response
++      logger.info(`[WhatsApp] Received message from ${customerName} (${customerContact}): ${messageContent}`);
+       const aiResponse = await chat(conversation.id, messageContent);
+-
+-      // Send response back via WhatsApp
+       await message.reply(aiResponse);
++      logger.info(`[WhatsApp] Replied to ${customerContact}`);
+     } catch (error) {
+-      logger.error("[WhatsApp] Failed to process message:", error);
++      logger.error("[WhatsApp] Message processing error: " + String(error));
+     }
+   });
+ 
+   whatsappClient = client;
+-  await client.initialize();
++
++  try {
++    await client.initialize();
++    logger.info("[WhatsApp] client.initialize() call completed");
++  } catch (error: any) {
++    logger.error("[WhatsApp] Init error: " + (error?.message || String(error)));
++    isStarting = false;
++    isSyncing = false;
++    connectionStatus = "error";
++    statusMessage = "Initialization failed: " + (error?.message || String(error));
++    whatsappClient = null;
++  }
+ }
+ 
+ export async function disconnectWhatsApp(): Promise<void> {
++  isStarting = false;
++  isSyncing = false;
+   if (whatsappClient) {
+-    await whatsappClient.destroy();
++    try {
++      whatsappClient.removeAllListeners();
++      await whatsappClient.destroy();
++    } catch (_) {}
+     whatsappClient = null;
+-    currentQR = null;
+-    connectionStatus = "disconnected";
+-    statusMessage = "Disconnected";
+   }
++  killChromiumProcesses();
++  currentQR = null;
++  qrTimestamp = 0;
++  connectionStatus = "disconnected";
++  statusMessage = "Disconnected";
+ }
+ 
+-export async function sendWhatsAppMessage(
+-  to: string,
+-  message: string
+-): Promise<boolean> {
+-  if (!whatsappClient || connectionStatus !== "connected") {
+-    return false;
+-  }
+-
++export async function sendWhatsAppMessage(to: string, message: string): Promise<boolean> {
++  if (!whatsappClient || connectionStatus !== "connected") return false;
+   const chatId = to.includes("@c.us") ? to : `${to}@c.us`;
+   await whatsappClient.sendMessage(chatId, message);
+   return true;
+diff --git a/src/lib/validations.ts b/src/lib/validations.ts
+index c960715..bef41f5 100644
+--- a/src/lib/validations.ts
++++ b/src/lib/validations.ts
+@@ -151,7 +151,7 @@ export const updateSettingsSchema = z.object({
+   language: z.string().max(20).optional(),
+   aiProvider: z.string().max(50).optional(),
+   aiModel: z.string().max(100).optional(),
+-  aiApiKey: z.string().max(500).optional(),
++  aiApiKey: z.string().max(2000).optional(),
+   maxTokens: z.number().int().min(100).max(128000).optional(),
+   temperature: z.number().min(0).max(2).optional(),
+   smtpHost: z.string().max(500).optional(),
+@@ -169,9 +169,9 @@ export const updateSettingsSchema = z.object({
+   elevenLabsKey: z.string().max(200).optional(),
+   elevenLabsVoice: z.string().max(200).optional(),
+   whatsappMode: z.string().max(50).optional(),
+-  whatsappApiKey: z.string().max(500).optional(),
++  whatsappApiKey: z.string().max(4000).optional(),
+   whatsappPhone: z.string().max(50).optional(),
+-}).strict();
++}).passthrough();
+ 
+ // Canned Responses
+ export const createCannedResponseSchema = z.object({
+diff --git a/src/middleware.ts b/src/middleware.ts
+index ffbe841..a8f5274 100644
+--- a/src/middleware.ts
++++ b/src/middleware.ts
+@@ -86,7 +86,8 @@ export function middleware(request: NextRequest) {
+   if (
+     pathname.startsWith("/api/channels/phone/") ||
+     pathname.startsWith("/api/channels/sms") ||
+-    pathname.startsWith("/api/channels/telegram")
++    pathname.startsWith("/api/channels/telegram") ||
++    pathname.startsWith("/api/channels/whatsapp/webhook")
+   ) {
+     return addHeaders(NextResponse.next(), requestId);
+   }

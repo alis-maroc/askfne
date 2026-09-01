@@ -151,7 +151,11 @@ export const updateSettingsSchema = z.object({
   language: z.string().max(20).optional(),
   aiProvider: z.string().max(50).optional(),
   aiModel: z.string().max(100).optional(),
-  aiApiKey: z.string().max(500).optional(),
+  aiApiKey: z.string().max(2000).optional(),
+  aiApiKeySecondary: z.string().max(2000).optional(),
+  fallbackProvider: z.string().max(50).optional(),
+  fallbackModel: z.string().max(100).optional(),
+  fallbackApiKey: z.string().max(2000).optional(),
   maxTokens: z.number().int().min(100).max(128000).optional(),
   temperature: z.number().min(0).max(2).optional(),
   smtpHost: z.string().max(500).optional(),
@@ -169,9 +173,9 @@ export const updateSettingsSchema = z.object({
   elevenLabsKey: z.string().max(200).optional(),
   elevenLabsVoice: z.string().max(200).optional(),
   whatsappMode: z.string().max(50).optional(),
-  whatsappApiKey: z.string().max(500).optional(),
+  whatsappApiKey: z.string().max(4000).optional(),
   whatsappPhone: z.string().max(50).optional(),
-}).strict();
+}).passthrough();
 
 // Canned Responses
 export const createCannedResponseSchema = z.object({

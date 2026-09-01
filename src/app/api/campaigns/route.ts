@@ -12,8 +12,37 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const { page, limit, skip, take } = parsePagination(searchParams);
     const status = searchParams.get("status");
-    const channel = searchParams.get("channel");
+    if (searchParams.get("audience") === "true") {
+      const [waRecs, tgRecs, totalCampaigns, sentAggregate] = await Promise.all([
+        prisma.conversation.findMany({
+          where: { channel: "whatsapp" },
+          select: { customerContact: true },
+          distinct: ["customerContact"],
+        }),
+        prisma.conversation.findMany({
+          where: { channel: "telegram" },
+          select: { customerContact: true },
+          distinct: ["customerContact"],
+        }),
+        prisma.campaign.count(),
+        prisma.campaign.aggregate({ _sum: { sentCount: true } }),
+      ]);
+      const waCount = waRecs.length;
+      const tgCount = tgRecs.length;
+      return NextResponse.json({
+        audience: {
+          whatsapp: waCount,
+          telegram: tgCount,
+          total: waCount + tgCount,
+        },
+        stats: {
+          totalCampaigns,
+          totalSent: sentAggregate._sum.sentCount || 0,
+        },
+      });
+    }
 
+    const channel = searchParams.get("channel");
     const where: Record<string, unknown> = {};
 
     if (status && status !== "all") {
