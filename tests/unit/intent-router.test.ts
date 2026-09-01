@@ -124,6 +124,48 @@ describe("classifyIntent", () => {
         });
     });
 
+    describe("Descriptive bureau queries — KB fallback for duties/roles", () => {
+        // CRITICAL: "مهام المكتب الوطني" (duties of National Bureau) is a
+        // descriptive question, not a roster question. It must route to
+        // QUESTION_GENERALE so the KB can answer; ORGANE_OFFICIEL would refuse
+        // if no verified roster exists.
+        it('classifies "مهام المكتب الوطني" as QUESTION_GENERALE (not ORGANE_OFFICIEL)', () => {
+            const result = classifyIntent(normalizeForTest("مهام المكتب الوطني"));
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "اختصاصات المكتب الوطني" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(normalizeForTest("اختصاصات المكتب الوطني"));
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "دور المكتب الجهوي" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(normalizeForTest("دور المكتب الجهوي"));
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "مهام اللجنة الإدارية" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(normalizeForTest("مهام اللجنة الإدارية"));
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        it('classifies "مهام النقابة الوطنية" as QUESTION_GENERALE', () => {
+            const result = classifyIntent(normalizeForTest("مهام النقابة الوطنية"));
+            expect(result.intent).toBe(INTENT.QUESTION_GENERALE);
+        });
+
+        // Must NOT regress: roster queries stay in ORGANE_OFFICIEL
+        it('keeps "تشكيلة المكتب الوطني" in ORGANE_OFFICIEL', () => {
+            const result = classifyIntent(normalizeForTest("تشكيلة المكتب الوطني"));
+            expect(result.intent).toBe(INTENT.ORGANE_OFFICIEL);
+        });
+
+        it('keeps "من هم أعضاء المكتب الوطني" in ORGANE_OFFICIEL', () => {
+            const result = classifyIntent(normalizeForTest("من هم أعضاء المكتب الوطني"));
+            expect(result.intent).toBe(INTENT.ORGANE_OFFICIEL);
+        });
+    });
+
     describe("TICKET_REQUEST — explicit ticket requests only", () => {
         it('classifies "فتح تذكرة" as TICKET_REQUEST', () => {
             const result = classifyIntent(normalizeForTest("فتح تذكرة"));

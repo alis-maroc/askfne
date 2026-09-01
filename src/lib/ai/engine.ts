@@ -1513,12 +1513,54 @@ export async function getKnowledgeBase(query?: string): Promise<KnowledgeItem[]>
       }
 
       if (selected.length > 0) {
-        const kbResults = selected.map(({ entry, score }) => ({
+        let kbResults = selected.map(({ entry, score }) => ({
           category: entry.category?.name || "عام",
           title: entry.title,
           content: entry.content,
           priority: Math.max(entry.priority, score),
         }));
+
+        // ─── Semantic boost ────────────────────────────────────────────────────
+        // Also query the embedding-based index and merge high-similarity entries
+        // that the keyword scoring missed (e.g. short entries or entries using
+        // synonyms that don't match exact tokens). This is a *boost*, not a
+        // replacement: keyword results always dominate, but well-ranked
+        // semantic hits get added.
+        try {
+          const semanticResults = await searchKnowledgeBase(query, 8);
+          if (semanticResults && semanticResults.length > 0) {
+            const existingIds = new Set(kbResults.map((r) => r.title));
+            const boosts: typeof kbResults = [];
+            for (const item of semanticResults) {
+              // Only consider semantic hits above 0.25 cosine similarity
+              // (translates to priority ≥ 25 below).
+              if (item.score < 0.25) continue;
+              if (existingIds.has(item.title)) {
+                // Already in keyword results: bump its priority so it dominates.
+                const existing = kbResults.find((r) => r.title === item.title);
+                if (existing) {
+                  existing.priority += Math.round(item.score * 100);
+                }
+              } else {
+                // Add new entry from semantic search.
+                boosts.push({
+                  category: item.category,
+                  title: item.title,
+                  content: item.content,
+                  priority: Math.round(item.score * 100),
+                });
+                existingIds.add(item.title);
+              }
+            }
+            if (boosts.length > 0) {
+              kbResults = [...kbResults, ...boosts];
+              // Re-sort by priority descending after merge
+              kbResults.sort((a, b) => b.priority - a.priority);
+            }
+          }
+        } catch (_error) {
+          // If semantic search fails, keep keyword results.
+        }
 
         if (officeMatches.length > 0) {
           return [...kbResults, ...officeMatches.slice(0, 3)].slice(0, 10);
