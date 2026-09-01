@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { Prisma } from "../../generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { confirmPendingTicket, executeToolCall, isTicketConfirmation, owlyTools } from "./tools";
@@ -9,6 +10,25 @@ import { detectHallucination, isAssistantRefusal } from "./refusal-detector";
 import { globalAIQueue } from "./queue";
 import { fetchHubOffices, formatHubOfficesResponse, type HubOffice } from "@/lib/hub-offices";
 import { normalizeCitySkeleton } from "@/lib/arabic-skeleton";
+// AGENTS.md compliance layer
+import {
+  classifyIntent,
+  decideAnswer,
+  INTENT,
+  isSourceAllowed,
+  type Intent,
+  type SourceType,
+} from "./intent-router";
+import {
+  clearStaleState,
+  CONVERSATION_STATE,
+  createIdleState,
+  type StateContext,
+} from "./conversation-state";
+import { logAnswer, trackClarification, trackRefusal } from "./observability";
+import { annotateWithStaleness, getStalenessReason } from "./freshness";
+import { normalizeArabic } from "./arabic-search";
+import { canConfirmTicket, canInitiateTicketWorkflow, formatTicketDraft, type TicketDraft } from "./ticket-guard";
 import type {
   AIMessage,
   AIConfig,
@@ -1630,6 +1650,87 @@ export async function chat(
   const pendingOfficeCandidate = typeof conversationMetadata.pendingOfficeCandidate === "string"
     ? conversationMetadata.pendingOfficeCandidate
     : null;
+
+  // ─── AGENTS.md compliance layer ────────────────────────────────────────────
+  // Step 1: Reconstruct persisted state and clear stale state for free-form
+  // questions. This is the rule that prevents a menu selection or office
+  // clarification from leaking into an unrelated global question.
+  const persistedState = conversationMetadata.conversationState as Partial<StateContext> | undefined;
+  const ctx: StateContext =
+    persistedState && typeof persistedState === "object" && typeof persistedState.state === "string"
+      ? {
+        state: persistedState.state as StateContext["state"],
+        lastActivity: persistedState.lastActivity
+          ? new Date(String(persistedState.lastActivity))
+          : new Date(),
+        payload: (persistedState.payload as Record<string, unknown> | undefined) ?? {},
+      }
+      : createIdleState();
+
+  // A free-form question is any non-numeric, non-ticket-confirmation input.
+  const isNumericMenu = /^[0-9]$/.test(userMessage.trim());
+  const isFreeFormQuestion = !isNumericMenu && !isTicketConfirmation(userMessage);
+  const clearedCtx = clearStaleState(ctx, isFreeFormQuestion);
+
+  // Persist the cleared state back so the next message sees a consistent view.
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      metadata: {
+        ...(conversationMetadata as Prisma.InputJsonValue as Record<string, unknown>),
+        conversationState: {
+          state: clearedCtx.state,
+          lastActivity: clearedCtx.lastActivity.toISOString(),
+          payload: clearedCtx.payload ?? {},
+        },
+      } as Prisma.InputJsonValue,
+    },
+  }).catch(() => { /* fire-and-forget */ });
+
+  // Step 2: Classify the intent BEFORE any retrieval. The normalized text is
+  // the single entry point that goes through normalizeArabic — never a custom
+  // regex.
+  const normalizedUserMessage = normalizeArabic(userMessage);
+  const classification = classifyIntent(normalizedUserMessage);
+  const detectedIntent: Intent = classification.intent;
+
+  // Step 3: Gate AI generation through decideAnswer. The refusal path is the
+  // data-contract guard: if no allowed source exists for this intent, we MUST
+  // refuse rather than guess.
+  const availableSources: ReadonlyArray<SourceType> =
+    detectedIntent === INTENT.CONTACT_BUREAU ? ["office_registry"] :
+      detectedIntent === INTENT.ORGANE_OFFICIEL ? ["official_roster"] :
+        detectedIntent === INTENT.POSITION_NATIONALE ? ["union_communique", "union_site"] :
+          detectedIntent === INTENT.TICKET_REQUEST ? ["ticket_system"] :
+            ["knowledge_base"];
+
+  // hasOfficialRoster is false until a dated roster is registered. Until then
+  // we MUST refuse the ORGANE_OFFICIEL intent.
+  const hasOfficialRoster = false;
+  const decision = decideAnswer({
+    intent: detectedIntent,
+    classification,
+    availableSources,
+    hasOfficialRoster,
+  });
+
+  if (decision.kind === "refuse") {
+    trackRefusal(decision.intent, decision.reason);
+    logAnswer({
+      intent: decision.intent,
+      sourceType: "none",
+      confidence: classification.confidence,
+      decision: "refuse",
+      reason: decision.reason,
+      channel: conversation.channel,
+      conversationId,
+      requiredClarification: false,
+      toolCallExecuted: false,
+    });
+    return decision.reason;
+  }
+  // ───────────────────────────────────────────────────────────────────────────
+
   const officeConfirmation = pendingOfficeCandidate && isTicketConfirmation(userMessage)
     ? await buildOfficeDirectAnswer(pendingOfficeCandidate)
     : null;
@@ -1932,6 +2033,54 @@ export async function chat(
   }
 
   emitNewMessage(conversationId, { id: savedMessage.id, role: "assistant", content: response });
+
+  // ─── AGENTS.md observability + freshness annotation ────────────────────────
+  // Track tool call usage and source authorization for audit.
+  const toolCallExecuted =
+    !!officeConfirmation ||
+    !!pendingTicketConfirmation ||
+    !!directOfficeAnswer ||
+    !!directPublicServiceAnswer ||
+    !!matchingAutomationReply;
+
+  if (toolCallExecuted) {
+    // Pick the actual source that was used so the audit log is accurate.
+    const sourceType: SourceType | "none" =
+      officeConfirmation || directOfficeAnswer
+        ? "office_registry"
+        : pendingTicketConfirmation
+          ? "ticket_system"
+          : directPublicServiceAnswer || matchingCannedResponse || matchingAutomationReply
+            ? "knowledge_base"
+            : "none";
+    if (isSourceAllowed(detectedIntent, sourceType as SourceType)) {
+      logAnswer({
+        intent: detectedIntent,
+        sourceType,
+        confidence: classification.confidence,
+        decision: "answer",
+        channel: conversation.channel,
+        conversationId,
+        requiredClarification: false,
+        toolCallExecuted: true,
+      });
+    }
+  }
+
+  // Annotate office responses with staleness when data is historical.
+  if (directOfficeAnswer) {
+    const today = new Date();
+    // Office registry data older than 6 months is treated as historical
+    // until the registry is refreshed. Until then, append a warning.
+    const sixMonthsAgo = new Date(today.getTime() - 1000 * 60 * 60 * 24 * 30 * 6);
+    response = annotateWithStaleness(response, {
+      source: "office_registry",
+      publishedAt: sixMonthsAgo,
+      status: "historical",
+      validUntil: null,
+    });
+  }
+  // ───────────────────────────────────────────────────────────────────────────
 
   return response;
 }

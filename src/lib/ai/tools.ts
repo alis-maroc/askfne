@@ -188,6 +188,9 @@ export function isTicketConfirmation(message: string): boolean {
   ].includes(normalized);
 }
 
+import { canConfirmTicket } from "./ticket-guard";
+import { CONVERSATION_STATE, type StateContext } from "./conversation-state";
+
 export async function confirmPendingTicket(conversationId: string): Promise<string | null> {
   const conversation = await prisma.conversation.findUnique({
     where: { id: conversationId },
@@ -196,6 +199,26 @@ export async function confirmPendingTicket(conversationId: string): Promise<stri
   const metadata = (conversation?.metadata ?? {}) as Record<string, unknown>;
   const pendingTicket = metadata.pendingTicket;
   if (!pendingTicket || typeof pendingTicket !== "object") return null;
+
+  // AGENTS.md guard: only confirm if the active state is TICKET_CONFIRMATION.
+  // Reconstruct the state from metadata; fallback to IDLE if missing.
+  const persistedState = metadata.conversationState as Partial<StateContext> | undefined;
+  const stateCtx: StateContext =
+    persistedState && typeof persistedState === "object" && typeof persistedState.state === "string"
+      ? {
+        state: persistedState.state as StateContext["state"],
+        lastActivity: persistedState.lastActivity
+          ? new Date(String(persistedState.lastActivity))
+          : new Date(),
+        payload: (persistedState.payload as Record<string, unknown> | undefined) ?? {},
+      }
+      : { state: CONVERSATION_STATE.IDLE, lastActivity: new Date(), payload: {} };
+
+  if (!canConfirmTicket(stateCtx)) {
+    // Active state is not TICKET_CONFIRMATION (or expired).
+    // Per AGENTS.md, we must NEVER create a ticket from a stale confirmation.
+    return "⛔ لا يمكن تأكيد التذكرة في هذا السياق. يرجى إعادة المحادثة من البداية.";
+  }
 
   const result = await createTicket(
     { ...(pendingTicket as Record<string, unknown>), confirmed: true },
@@ -260,10 +283,10 @@ async function createTicket(
 
   const department = args.department
     ? await prisma.department.findFirst({
-        where: {
-          name: { contains: args.department as string, mode: "insensitive" },
-        },
-      })
+      where: {
+        name: { contains: args.department as string, mode: "insensitive" },
+      },
+    })
     : null;
 
   const ticket = await prisma.ticket.create({
