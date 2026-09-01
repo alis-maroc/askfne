@@ -253,6 +253,7 @@ function buildMenuText(): string {
     "8️⃣ 📄 *توليد المراسلات والطلبات الإدارية (PDF)*",
     "9️⃣ 🧮 *حساب وتدقيق نقط الترقية*",
     "📨 لإرسال *ملاحظة أو اقتراح* للجامعة اكتب *اقتراح*",
+    "⚖️ لقراءة *توجيه تنظيمي وإخلاء مسؤولية* اكتب *ميثاق*",
   ].join("\n");
 }
 
@@ -808,11 +809,14 @@ async function sendText(jid: string, text: string): Promise<void> {
   }
 }
 
+import sharp from "sharp";
+
 const FNE_LOGO_PATH = path.join(process.cwd(), "public", "logo_fne.gif");
+const FNE_LOGO_MAX_WIDTH = 280; // pixels — small, discreet logo for the menu header
 
 /**
- * Send the FNE logo as a single image message with the menu text as the caption.
- * Falls back to a plain-text menu if the logo file is missing or the image send fails.
+ * Read the FNE logo, resize it to a small width, and send it with the menu text as caption.
+ * Falls back to a plain-text menu if the logo file is missing, sharp fails, or send errors.
  */
 async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> {
   if (!waState.sock) {
@@ -822,16 +826,21 @@ async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> 
   try {
     let buffer: Buffer | null = null;
     try {
-      buffer = fs.readFileSync(FNE_LOGO_PATH);
-    } catch (readErr) {
-      logger.warn("[WhatsApp/Baileys] FNE logo not found, sending menu as plain text:", {
+      const raw = fs.readFileSync(FNE_LOGO_PATH);
+      // Resize to a small, discreet header logo (preserves aspect ratio)
+      buffer = await sharp(raw)
+        .resize({ width: FNE_LOGO_MAX_WIDTH, withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+    } catch (imgErr) {
+      logger.warn("[WhatsApp/Baileys] FNE logo unavailable, sending menu as plain text:", {
         path: FNE_LOGO_PATH,
-        error: String(readErr),
+        error: String(imgErr),
       });
       await sendText(jid, caption);
       return false;
     }
-    if (!buffer) {
+    if (!buffer || buffer.length === 0) {
       await sendText(jid, caption);
       return false;
     }
@@ -855,8 +864,9 @@ async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> 
     const sendRes = await waState.sock.sendMessage(jid, {
       image: buffer,
       caption,
+      mimetype: "image/jpeg",
     });
-    logger.info(`[WhatsApp/Baileys] Menu+logo sent to ${jid}, id: ${sendRes?.key?.id || "unknown"}`);
+    logger.info(`[WhatsApp/Baileys] Menu+logo (${buffer.length} bytes) sent to ${jid}, id: ${sendRes?.key?.id || "unknown"}`);
     return true;
   } catch (err) {
     logger.error(`[WhatsApp/Baileys] sendMenuWithLogo error to ${jid}:`, { error: String(err) });
