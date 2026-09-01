@@ -17,6 +17,8 @@ import {
   ToggleLeft,
   ToggleRight,
   Users,
+  RefreshCw,
+  Building2,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
@@ -83,7 +85,43 @@ function formatDate(dateStr: string): string {
 // ---------------------------------------------------------------------------
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<"users" | "apikeys">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "apikeys" | "sync">("users");
+
+  // --- Office sync state ---
+  const [syncingOffices, setSyncingOffices] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    success: boolean;
+    message: string;
+    offices?: number;
+    regional?: number;
+    errors?: string[];
+  } | null>(null);
+
+  async function syncOffices() {
+    if (!confirm("تأكيد مزامنة المكاتب من hub.taalim.org؟ قد تستغرق العملية دقيقة.")) return;
+    setSyncingOffices(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/sync/offices", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setSyncResult({
+          success: true,
+          message: data.message || "تمت المزامنة بنجاح",
+          offices: data.offices,
+          regional: data.regional,
+          errors: data.errors,
+        });
+      } else {
+        setSyncResult({ success: false, message: data.error || "فشل المزامنة" });
+      }
+    } catch (err) {
+      console.error("Sync failed:", err);
+      setSyncResult({ success: false, message: "حدث خطأ غير متوقع" });
+    } finally {
+      setSyncingOffices(false);
+    }
+  }
 
   // --- Users state ---
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -377,6 +415,18 @@ export default function AdminPage() {
             <Key className="h-4 w-4" />
             API Keys
           </button>
+          <button
+            onClick={() => setActiveTab("sync")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
+              activeTab === "sync"
+                ? "bg-owly-surface text-owly-text shadow-sm"
+                : "text-owly-text-light hover:text-owly-text"
+            )}
+          >
+            <Building2 className="h-4 w-4" />
+            Sync Offices
+          </button>
         </div>
 
         {/* ================= USERS TAB ================= */}
@@ -602,6 +652,97 @@ export default function AdminPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= SYNC OFFICES TAB ================= */}
+        {activeTab === "sync" && (
+          <div className="bg-owly-surface border border-owly-border rounded-xl p-6 max-w-2xl">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="p-3 rounded-lg bg-owly-primary-50">
+                <Building2 className="h-6 w-6 text-owly-primary" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-owly-text mb-1">
+                  مزامنة المكاتب من hub.taalim.org
+                </h2>
+                <p className="text-sm text-owly-text-light">
+                  يقوم هذا الزر بسحب جميع المكاتب من المنصة الرسمية (المكتب الوطني، 12 مكتباً جهوياً، المكاتب الإقليمية، المحلية والموازية) وتحديث قاعدة البيانات وإنشاء المقالات الإقليمية تلقائياً.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700 mb-4">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span>
+                تستغرق العملية من 30 ثانية إلى دقيقتين. سيتم حذف وإعادة إنشاء المقالات الإقليمية تلقائياً.
+              </span>
+            </div>
+
+            <button
+              onClick={syncOffices}
+              disabled={syncingOffices}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-owly-primary hover:bg-owly-primary-dark disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              {syncingOffices ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  جارِ المزامنة...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4" />
+                  مزامنة المكاتب الآن
+                </>
+              )}
+            </button>
+
+            {syncResult && (
+              <div
+                className={cn(
+                  "mt-4 p-4 rounded-lg border",
+                  syncResult.success
+                    ? "bg-green-50 border-green-200"
+                    : "bg-red-50 border-red-200"
+                )}
+              >
+                <div className="flex items-start gap-2">
+                  {syncResult.success ? (
+                    <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <p
+                      className={cn(
+                        "text-sm font-medium",
+                        syncResult.success ? "text-green-800" : "text-red-800"
+                      )}
+                    >
+                      {syncResult.message}
+                    </p>
+                    {syncResult.success && syncResult.offices !== undefined && (
+                      <div className="mt-2 text-xs text-green-700 space-y-1">
+                        <p>• المكاتب المحدثة: <strong>{syncResult.offices}</strong></p>
+                        <p>• المقالات الجهوية: <strong>{syncResult.regional}</strong></p>
+                        {syncResult.errors && syncResult.errors.length > 0 && (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-amber-700">
+                              {syncResult.errors.length} تحذيرات
+                            </summary>
+                            <ul className="mt-1 list-disc list-inside text-amber-700">
+                              {syncResult.errors.slice(0, 10).map((err, i) => (
+                                <li key={i}>{err}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
