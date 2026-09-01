@@ -465,6 +465,15 @@ async function findOfficeMatches(query: string): Promise<KnowledgeItem[]> {
 
 export async function buildOfficeDirectAnswer(query: string): Promise<string | null> {
   const normQ = normalizeForMatch(query);
+
+  // Descriptive bureau questions (missions, roles, formation, etc.) are NOT
+  // office-contact lookups. They must not be answered by the office-lookup
+  // pipeline — let the intent-router's QUESTION_GENERALE path handle them
+  // so the KB can provide the answer.
+  if (/مهام|اختصاصات|دور\s|وظائف|تاسيس|تأسيس|تشكيل|تنظيم\s+(?:المكتب|اللجنه|اللجنة|المجلس|النقابه)/i.test(normQ)) {
+    return null;
+  }
+
   const intent = classifyQueryIntent(query);
   const isOfficeContact = intent === "office_contact";
 
