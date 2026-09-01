@@ -42,24 +42,17 @@ export async function PUT(
     });
 
     // Re-generate embedding whenever title or content changes.
-    // Fire-and-forget: log failure but do not block the API response.
+    // indexKnowledgeEntry() auto-detects OpenAI vs OpenRouter from key prefix and
+    // resolves the best embedding key from Settings. Fire-and-forget: log failure
+    // but do not block the API response.
     void (async () => {
       try {
-        const settings = await prisma.settings.findUnique({
-          where: { id: "default" },
-          select: { aiApiKey: true, aiProvider: true },
-        });
-        if (
-          settings?.aiProvider === "openai" &&
-          settings.aiApiKey?.startsWith("sk-")
-        ) {
-          const ok = await indexKnowledgeEntry(entry.id, settings.aiApiKey);
-          if (!ok) {
-            logger.warn("Failed to re-index updated knowledge entry", {
-              id: entry.id,
-              title: entry.title,
-            });
-          }
+        const ok = await indexKnowledgeEntry(entry.id);
+        if (!ok) {
+          logger.warn("Failed to re-index updated knowledge entry", {
+            id: entry.id,
+            title: entry.title,
+          });
         }
       } catch (err) {
         logger.warn("Embedding re-indexing threw for updated entry", {

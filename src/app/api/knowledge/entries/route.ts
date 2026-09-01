@@ -88,24 +88,17 @@ export async function POST(request: NextRequest) {
     });
 
     // Fire-and-forget embedding indexing so future semantic queries find this entry.
-    // Failure is logged but does not block the API response.
+    // indexKnowledgeEntry() auto-detects OpenAI vs OpenRouter from key prefix and
+    // resolves the best embedding key from Settings if needed. Failure is logged
+    // but does not block the API response.
     void (async () => {
       try {
-        const settings = await prisma.settings.findUnique({
-          where: { id: "default" },
-          select: { aiApiKey: true, aiProvider: true },
-        });
-        if (
-          settings?.aiProvider === "openai" &&
-          settings.aiApiKey?.startsWith("sk-")
-        ) {
-          const ok = await indexKnowledgeEntry(entry.id, settings.aiApiKey);
-          if (!ok) {
-            logger.warn("Failed to index new knowledge entry", {
-              id: entry.id,
-              title: entry.title,
-            });
-          }
+        const ok = await indexKnowledgeEntry(entry.id);
+        if (!ok) {
+          logger.warn("Failed to index new knowledge entry", {
+            id: entry.id,
+            title: entry.title,
+          });
         }
       } catch (err) {
         logger.warn("Embedding indexing threw for new entry", {
