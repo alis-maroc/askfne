@@ -38,7 +38,8 @@ trap cleanup EXIT
 
 # ── Banner ─────────────────────────────────────────────────────────────────────
 header
-echo -e "  This script installs Owly on a VPS (AlmaLinux 8/9 or Ubuntu 22/24)."
+echo -e "  This script installs Owly on a VPS."
+echo -e "  Supports: AlmaLinux, CloudLinux, RHEL, Ubuntu, Debian."
 echo -e "  Compatible with CWP (CentOS Web Panel)."
 echo ""
 echo -e "  ${BOLD}What it does:${NC}"
@@ -56,6 +57,8 @@ read -r
 log_info "Detecting operating system..."
 if [[ -f /etc/almalinux-release ]]; then
   OS="almalinux"; OS_NAME="AlmaLinux $(cat /etc/almalinux-release | grep -oP '\d+' | head -1)"
+elif [[ -f /etc/cloudlinux-release ]]; then
+  OS="cloudlinux"; OS_NAME=$(cat /etc/cloudlinux-release | xargs)
 elif [[ -f /etc/redhat-release ]]; then
   OS="rhel"; OS_NAME=$(cat /etc/redhat-release | xargs)
 elif [[ -f /etc/lsb-release ]]; then
@@ -119,16 +122,44 @@ else
   fi
 fi
 
-# Docker Compose v2 check
+# Docker Compose v2 check (plugin) or v1 (standalone)
 if docker compose version &>/dev/null; then
   DOCKER_COMPOSE="docker compose"
+  log_ok "Docker Compose plugin: $(docker compose version --short 2>/dev/null)"
 elif command -v docker-compose &>/dev/null; then
   DOCKER_COMPOSE="docker-compose"
+  log_ok "Docker Compose standalone: $(docker-compose version --short 2>/dev/null)"
 else
-  log_error "Docker Compose v2 not found. Please install Docker Compose."
-  exit 1
+  log_warn "Docker Compose not found. Attempting to install the v2 plugin..."
+  if [[ "$OS" == "almalinux" ]] || [[ "$OS" == "rhel" ]] || [[ "$OS" == "cloudlinux" ]]; then
+    dnf install -y docker-compose-plugin 2>/dev/null || \
+    yum install -y docker-compose-plugin 2>/dev/null || true
+  elif [[ "$OS" == "ubuntu" ]] || [[ "$OS" == "debian" ]]; then
+    apt-get install -y -q docker-compose-plugin 2>/dev/null || true
+  fi
+  if docker compose version &>/dev/null; then
+    DOCKER_COMPOSE="docker compose"
+    log_ok "Docker Compose plugin installed: $(docker compose version --short 2>/dev/null)"
+  else
+    log_warn "Plugin install failed. Downloading docker-compose standalone binary..."
+    ARCH=$(uname -m)
+    case "$ARCH" in
+      x86_64) COMPOSE_ARCH="x86_64" ;;
+      aarch64|arm64) COMPOSE_ARCH="aarch64" ;;
+      *) log_error "Unsupported architecture: $ARCH"; exit 1 ;;
+    esac
+    if curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-${COMPOSE_ARCH}" \
+         -o /usr/local/bin/docker-compose 2>/dev/null; then
+      chmod +x /usr/local/bin/docker-compose
+      DOCKER_COMPOSE="docker-compose"
+      log_ok "Docker Compose standalone installed: $(docker-compose version --short 2>/dev/null)"
+    else
+      log_error "Failed to install Docker Compose. Please install it manually."
+      log_info "Guide: https://docs.docker.com/compose/install/"
+      exit 1
+    fi
+  fi
 fi
-log_ok "Docker Compose: $(${DOCKER_COMPOSE} version --short 2>/dev/null || echo 'unknown')"
 
 # ── 3. CWP Detection ───────────────────────────────────────────────────────────
 CWP_DETECTED=false
