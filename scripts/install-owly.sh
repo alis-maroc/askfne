@@ -161,16 +161,27 @@ else
     # Try multiple download methods for the docker-compose binary
     log_warn "Trying to download docker-compose binary..."
     DOWNLOAD_OK=false
-    # Method 1: curl with redirects
-    if curl -fsSL --retry 3 -o /usr/local/bin/docker-compose \
-         "https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-${COMPOSE_ARCH}" 2>/dev/null; then
-      chmod +x /usr/local/bin/docker-compose 2>/dev/null && DOWNLOAD_OK=true
+    COMPOSE_VERSION="v2.27.1"
+    COMPOSE_URL="https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${COMPOSE_ARCH}"
+    # Method 1: curl with -L (follow redirects) — write to /tmp first, then move
+    if [[ "$DOWNLOAD_OK" == "false" ]]; then
+      if curl -fsSL --retry 3 -L -o /tmp/docker-compose "$COMPOSE_URL" 2>/dev/null; then
+        # Verify it's a valid binary (check file size > 10MB)
+        if [[ $(stat -c%s /tmp/docker-compose 2>/dev/null || stat -f%z /tmp/docker-compose 2>/dev/null) -gt 10000000 ]]; then
+          chmod +x /tmp/docker-compose && mv /tmp/docker-compose /usr/local/bin/docker-compose && DOWNLOAD_OK=true
+        else
+          rm -f /tmp/docker-compose
+        fi
+      fi
     fi
     # Method 2: wget fallback
     if [[ "$DOWNLOAD_OK" == "false" ]] && command -v wget &>/dev/null; then
-      if wget -q -O /usr/local/bin/docker-compose \
-         "https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-${COMPOSE_ARCH}" 2>/dev/null; then
-        chmod +x /usr/local/bin/docker-compose 2>/dev/null && DOWNLOAD_OK=true
+      if wget -q -L -O /tmp/docker-compose "$COMPOSE_URL" 2>/dev/null; then
+        if [[ $(stat -c%s /tmp/docker-compose 2>/dev/null || stat -f%z /tmp/docker-compose 2>/dev/null) -gt 10000000 ]]; then
+          chmod +x /tmp/docker-compose && mv /tmp/docker-compose /usr/local/bin/docker-compose && DOWNLOAD_OK=true
+        else
+          rm -f /tmp/docker-compose
+        fi
       fi
     fi
     # Method 3: pip (always available with CWP)
