@@ -47,18 +47,18 @@ interface ConversationData {
 
 interface CustomerData {
   id: string;
-  name: string;
-  email: string;
-  phone: string;
-  whatsapp: string;
-  tags: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  tags: string | null;
   isBlocked: boolean;
-  notes: CustomerNoteData[];
-  metadata: Record<string, unknown>;
-  firstContact: string;
-  lastContact: string;
+  notes?: CustomerNoteData[];
+  metadata?: Record<string, unknown>;
+  firstContact: string | null;
+  lastContact: string | null;
   conversations?: ConversationData[];
-  _count: { notes: number };
+  _count?: { notes: number };
 }
 
 interface PaginationData {
@@ -469,14 +469,14 @@ export default function CustomersPage() {
                       className={cn(
                         "hover:bg-owly-primary-50/50 cursor-pointer transition-colors",
                         selectedCustomer?.id === customer.id &&
-                          "bg-owly-primary-50"
+                        "bg-owly-primary-50"
                       )}
                     >
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-owly-primary-100 flex items-center justify-center flex-shrink-0">
                             <span className="text-sm font-medium text-owly-primary">
-                              {customer.name.charAt(0).toUpperCase()}
+                              {customer.name?.charAt(0)?.toUpperCase() || "?"}
                             </span>
                           </div>
                           <span className="text-sm font-medium text-owly-text truncate">
@@ -495,7 +495,7 @@ export default function CustomersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 hidden xl:table-cell">
-                        {renderTags(customer.tags) || (
+                        {renderTags(customer.tags || "") || (
                           <span className="text-sm text-owly-text-light">
                             --
                           </span>
@@ -503,12 +503,12 @@ export default function CustomersPage() {
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
                         <span className="text-xs text-owly-text-light">
-                          {formatDate(customer.firstContact)}
+                          {customer.firstContact ? formatDate(customer.firstContact) : "--"}
                         </span>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <span className="text-xs text-owly-text-light">
-                          {formatDate(customer.lastContact)}
+                          {customer.lastContact ? formatDate(customer.lastContact) : "--"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -632,7 +632,7 @@ export default function CustomersPage() {
               </button>
               <div className="w-10 h-10 rounded-full bg-owly-primary-100 flex items-center justify-center flex-shrink-0">
                 <span className="text-lg font-semibold text-owly-primary">
-                  {selectedCustomer.name.charAt(0).toUpperCase()}
+                  {selectedCustomer.name?.charAt(0)?.toUpperCase() || "?"}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
@@ -658,7 +658,7 @@ export default function CustomersPage() {
                     </span>
                   )}
                   <span className="text-xs text-owly-text-light">
-                    {selectedCustomer._count.notes} notes
+                    {selectedCustomer._count?.notes ?? selectedCustomer.notes?.length ?? 0} notes
                   </span>
                 </div>
               </div>
@@ -675,11 +675,11 @@ export default function CustomersPage() {
                       onClick={() => {
                         setEditMode(false);
                         setEditForm({
-                          name: selectedCustomer.name,
-                          email: selectedCustomer.email,
-                          phone: selectedCustomer.phone,
-                          whatsapp: selectedCustomer.whatsapp,
-                          tags: selectedCustomer.tags,
+                          name: selectedCustomer.name || "",
+                          email: selectedCustomer.email || "",
+                          phone: selectedCustomer.phone || "",
+                          whatsapp: selectedCustomer.whatsapp || "",
+                          tags: selectedCustomer.tags || "",
                         });
                       }}
                       className="px-3 py-1.5 text-xs font-medium text-owly-text-light border border-owly-border rounded-lg hover:bg-owly-primary-50 transition-colors"
@@ -812,7 +812,7 @@ export default function CustomersPage() {
                       <div className="flex items-center gap-2">
                         <Clock className="h-3.5 w-3.5 text-owly-text-light flex-shrink-0" />
                         <span className="text-xs text-owly-text-light">
-                          Since {formatDate(selectedCustomer.firstContact)}
+                          Since {selectedCustomer.firstContact ? formatDate(selectedCustomer.firstContact) : "--"}
                         </span>
                       </div>
                     </div>
@@ -859,7 +859,7 @@ export default function CustomersPage() {
                       />
                     </div>
                   ) : (
-                    renderTags(selectedCustomer.tags) || (
+                    renderTags(selectedCustomer.tags || "") || (
                       <span className="text-sm text-owly-text-light">
                         No tags
                       </span>
@@ -926,7 +926,7 @@ export default function CustomersPage() {
                       </div>
 
                       {/* Notes Timeline */}
-                      {selectedCustomer.notes.length === 0 ? (
+                      {(!selectedCustomer.notes || selectedCustomer.notes.length === 0) ? (
                         <div className="text-center py-8">
                           <StickyNote className="h-8 w-8 text-owly-text-light/40 mx-auto mb-2" />
                           <p className="text-sm text-owly-text-light">
@@ -935,7 +935,7 @@ export default function CustomersPage() {
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          {selectedCustomer.notes.map((note) => (
+                          {selectedCustomer.notes!.map((note) => (
                             <div
                               key={note.id}
                               className="bg-owly-bg border border-owly-border rounded-lg p-3"
@@ -963,7 +963,7 @@ export default function CustomersPage() {
                   ) : (
                     <div className="p-4">
                       {!selectedCustomer.conversations ||
-                      selectedCustomer.conversations.length === 0 ? (
+                        selectedCustomer.conversations.length === 0 ? (
                         <div className="text-center py-8">
                           <MessageSquare className="h-8 w-8 text-owly-text-light/40 mx-auto mb-2" />
                           <p className="text-sm text-owly-text-light">
@@ -984,7 +984,7 @@ export default function CustomersPage() {
                                   className={cn(
                                     "p-2 rounded-lg flex-shrink-0",
                                     channelColors[conv.channel] ||
-                                      "text-owly-primary bg-owly-primary-50"
+                                    "text-owly-primary bg-owly-primary-50"
                                   )}
                                 >
                                   <ChannelIcon className="h-4 w-4" />

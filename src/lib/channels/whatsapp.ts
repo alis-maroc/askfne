@@ -1826,7 +1826,14 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
     if (connection === "close") {
       const error = lastDisconnect?.error as Boom | undefined;
       const statusCode = error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      // 403 = Forbidden = account banned by WhatsApp/Meta. Do NOT retry — manual intervention required.
+      // 401 = Unauthorized = session invalid. Also requires manual reconnect.
+      // 428 = Something went wrong, possibly device removed from phone.
+      const isBannedOrLoggedOut = statusCode === DisconnectReason.loggedOut
+        || statusCode === 403
+        || statusCode === 401
+        || statusCode === 428;
+      const shouldReconnect = !isBannedOrLoggedOut;
 
       logger.info(
         `[WhatsApp/Baileys] Connection closed. statusCode=${statusCode}, shouldReconnect=${shouldReconnect}`
@@ -1840,6 +1847,19 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
       if (waState.isManuallyStopping) {
         logger.info("[WhatsApp/Baileys] Manual stop in progress — skipping auto-reconnect");
         return;
+      }
+
+      // Specific guidance for banned / logged-out accounts
+      if (isBannedOrLoggedOut) {
+        if (statusCode === 403) {
+          waState.statusMessage = "BLOQUÉ: compte WhatsApp banni (403). Faites appel sur https://www.whatsapp.com/contact/";
+        } else if (statusCode === 401) {
+          waState.statusMessage = "Session expirée. Reconnectez-vous depuis le tableau de bord.";
+        } else if (statusCode === 428) {
+          waState.statusMessage = "Connexion perdue. Reconnectez-vous depuis le tableau de bord.";
+        } else {
+          waState.statusMessage = "Déconnecté. Reconnectez-vous depuis le tableau de bord.";
+        }
       }
 
       try {

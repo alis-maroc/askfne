@@ -13,8 +13,7 @@
  *   - validUntil    : expiry date (null = no expiry)
  *
  * Usage in prompts:
- *   If status === "historical" → append "[Information historique — vérifier la date]"
- *   If validUntil < now → append "[Information potentiellement obsolète]"
+ *   If validUntil < now → append "[Information potentiellement obsolète — expirée]"
  */
 
 export interface FreshnessMetadata {
@@ -42,10 +41,8 @@ export function getStalenessReason(
     meta: FreshnessMetadata,
     now: Date = new Date()
 ): string | null {
-    if (meta.status === "historical") {
-        return "[Information historique — vérifier la date de validité]";
-    }
-
+    // Historical status no longer triggers a user-facing warning.
+    // We only surface staleness when a real expiry date has passed.
     if (meta.validUntil && meta.validUntil < now) {
         return "[Information potentiellement obsolète — expirée]";
     }

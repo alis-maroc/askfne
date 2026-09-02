@@ -191,7 +191,11 @@ function isStartCommand(text: string): boolean {
     trimmed.startsWith("/start ") ||
     trimmed === "start" ||
     trimmed === "قائمة" ||
-    trimmed === "menu"
+    trimmed === "menu" ||
+    trimmed === "0" ||
+    trimmed === "٠" ||  // Arabic-indic zero
+    trimmed === "۰" ||  // Eastern Arabic-indic zero
+    normalizeDigitCommand(text) === "0"
   );
 }
 
@@ -386,12 +390,29 @@ async function handleHubMenuCommandTelegram(
   metadata: Record<string, unknown>,
   isInHubMenu: boolean
 ): Promise<boolean> {
+  // "0" always returns to main menu, even if not in hub menu
+  const trimmed = messageContent.trim();
+  if (trimmed === "0" || normalizeDigitCommand(trimmed) === "0") {
+    await exitHubMenu(conversationId, metadata);
+    const token = await getTelegramToken();
+    if (token) await sendTelegramMessage(token, chatId, telegramWelcomeText());
+    return true;
+  }
+
   if (!isInHubMenu && !isHubMenuTrigger(messageContent)) return false;
 
   const convId = conversationId;
   restoreHubMenuState(convId, "telegram", metadata[HUB_MENU_META_KEY]);
   const currentState = getHubMenuState(convId);
-  const trimmed = messageContent.trim();
+
+  // "0" or "رجوع" always returns to main menu (not just one level back)
+  const isMainMenuTrigger = trimmed === "0" || trimmed === "رجوع" || /^back$/i.test(trimmed) || normalizeDigitCommand(trimmed) === "0";
+  if (isMainMenuTrigger) {
+    await exitHubMenu(convId, metadata);
+    const token = await getTelegramToken();
+    if (token) await sendTelegramMessage(token, chatId, telegramWelcomeText());
+    return true;
+  }
 
   if (trimmed === "hub:back" && currentState?.backState) {
     setHubMenuState(
@@ -407,28 +428,8 @@ async function handleHubMenuCommandTelegram(
     return true;
   }
 
-  const isBack = trimmed === "0" || trimmed === "رجوع" || /^back$/i.test(trimmed) || normalizeDigitCommand(trimmed) === "0";
-  if (isBack && currentState?.backState) {
-    setHubMenuState(
-      convId,
-      "telegram",
-      currentState.backState.level,
-      currentState.backState.parentId,
-      currentState.backState.parentLabel,
-      currentState.backState.searchTerm,
-      currentState.backState.backState
-    );
-    await renderHubMenuTextTelegram(chatId, conversationId, messageContent, metadata);
-    return true;
-  }
-
   if (!currentState || currentState.level === "root") {
-    if (isBack) {
-      await exitHubMenu(convId, metadata);
-      const token = await getTelegramToken();
-      if (token) await sendTelegramMessage(token, chatId, telegramWelcomeText());
-      return true;
-    }
+    // At root level: parse as a root menu selection
     const rootItems = buildRootMenu();
     const selected = parseSelection(trimmed, rootItems);
     if (selected) {
@@ -442,10 +443,12 @@ async function handleHubMenuCommandTelegram(
       );
       return true;
     }
+    // Invalid selection at root, just re-render
     await renderHubMenuTextTelegram(chatId, conversationId, messageContent, metadata);
     return true;
   }
 
+  // Deeper menu level: get items for current state
   const items = await getHubMenuItemsForStateTelegram(currentState);
   if (items.length === 0) {
     const token = await getTelegramToken();
@@ -461,7 +464,7 @@ async function handleHubMenuCommandTelegram(
   if (!selected) {
     const token = await getTelegramToken();
     if (token) {
-      await sendTelegramMessage(token, chatId, "⚠️ اختيار غير صحيح. اختر أحد الأزرار الظاهرة.");
+      await sendTelegramMessage(token, chatId, "⚠️ اختيار غير صحيح. اختر أحد الأزرار الظاهرة.\n\nاكتب 0 للعودة إلى القائمة الرئيسية.");
     }
     return true;
   }
@@ -506,7 +509,8 @@ async function renderHubMenuTextTelegram(
   else if (state.level === "provinces") title = state.parentLabel || "المكاتب الإقليمية";
   else if (state.level === "parallelBranches") title = state.parentLabel || "فروع التنظيم";
 
-  const text = title;
+  const backReminder = state.level !== "root" ? "\n\n🔙 اكتب 0 للعودة إلى القائمة الرئيسية" : "";
+  const text = title + backReminder;
   const keyboard = formatMenuAsTelegramKeyboard(items);
   if (state.backState) {
     keyboard.push([
