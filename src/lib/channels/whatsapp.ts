@@ -1144,6 +1144,7 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
           await sendText(jid, delivery);
 
           // Send native PDF document attachment directly into WhatsApp chat
+          let pdfSent = false;
           try {
             const pdfBuffer = await generateRequestPdf(result.printToken);
             if (pdfBuffer && waState.sock) {
@@ -1155,9 +1156,17 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
                 caption: `📄 وثيقة ${config.label} الرسمية جاهزة للتحميل والطباعة\nالمعني بالأمر: ${updatedWizard.data.fullName || ""}`,
               });
               logger.info(`[WhatsApp/RequestWizard] Native PDF sent to ${jid}`);
+              pdfSent = true;
             }
           } catch (pdfErr) {
             logger.warn(`[WhatsApp/RequestWizard] Failed to send native PDF:`, { err: String(pdfErr) });
+          }
+
+          // If PDF could not be sent, inform the user and provide the download link
+          if (!pdfSent) {
+            const fallbackNote = `\n\n⚠️ للأسف لم نتمكن من إرسال ملف PDF مباشرة. يمكنك تحميله من الرابط التالي:\n${result.printUrl}`;
+            await recordExchange(conversation.id, "", fallbackNote);
+            await sendText(jid, fallbackNote);
           }
         } catch (genErr: any) {
           logger.error("[WhatsApp/RequestWizard] Generation error: " + (genErr?.stack || genErr?.message || String(genErr)));

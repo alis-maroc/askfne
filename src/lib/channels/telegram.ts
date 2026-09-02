@@ -35,6 +35,7 @@ import { cleanArticleBodyForChat, getArticleById, getCategoryArticles, GUIDED_CA
 import { getCurrentQuestion, processAnswer, isComplete, serializeWizardState, type WizardState } from "@/lib/requests/wizard";
 import { REQUEST_TYPES, type RequestType } from "@/lib/requests/types";
 import { buildDeliveryMessage, generateAdminRequest } from "@/lib/requests/generator";
+import { generateRequestPdf } from "@/lib/requests/pdf-generator";
 
 interface TelegramUser {
   id: number;
@@ -665,6 +666,25 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
           data: { metadata: { ...metadata, userProfile, [TELEGRAM_DOCUMENT_META_KEY]: null } },
         });
         await sendTelegramScreen(token, chatId, delivery);
+
+        // Send native PDF document to Telegram
+        let pdfSent = false;
+        try {
+          const pdfBuffer = await generateRequestPdf(result.printToken);
+          if (pdfBuffer) {
+            const safeName = `طلب_${(updatedWizard.data.fullName || "إداري").replace(/\s+/g, "_")}.pdf`;
+            const caption = `📄 وثيقة ${config.label} الرسمية جاهزة للطباعة\nالمعني بالأمر: ${updatedWizard.data.fullName || ""}`;
+            pdfSent = await sendTelegramDocument(token, chatId, pdfBuffer, safeName, caption);
+          }
+        } catch (pdfErr: any) {
+          logger.warn(`[Telegram/RequestWizard] Failed to send PDF:`, { err: String(pdfErr?.message || pdfErr) });
+        }
+
+        // If PDF could not be sent, inform the user with the download link
+        if (!pdfSent) {
+          const fallbackNote = `⚠️ للأسف لم نتمكن من إرسال ملف PDF مباشرة.\n\n📥 يمكنك تحميله من الرابط التالي:\n${result.printUrl}`;
+          await sendTelegramMessage(token, chatId, fallbackNote);
+        }
       } else {
         await prisma.conversation.update({
           where: { id: conversation.id },
@@ -963,6 +983,40 @@ async function sendTelegramChatAction(
     });
   } catch {
     // non-fatal
+  }
+}
+
+/**
+ * Send a PDF document to Telegram via multipart/form-data.
+ * Returns true if sent successfully.
+ */
+export async function sendTelegramDocument(
+  token: string,
+  chatId: number,
+  pdfBuffer: Buffer,
+  fileName: string,
+  caption?: string
+): Promise<boolean> {
+  try {
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    form.append("document", new Blob([new Uint8Array(pdfBuffer)], { type: "application/pdf" }), fileName);
+    if (caption) form.append("caption", caption);
+
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+      method: "POST",
+      body: form,
+    });
+    const data = await response.json();
+    if (data.ok) {
+      logger.info(`[Telegram] Document sent to ${chatId} (${pdfBuffer.length} bytes)`);
+      return true;
+    }
+    logger.warn(`[Telegram] sendDocument failed: ${data.description}`);
+    return false;
+  } catch (error) {
+    logger.error("[Telegram] sendDocument error:", error);
+    return false;
   }
 }
 
