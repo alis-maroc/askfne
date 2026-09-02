@@ -165,6 +165,7 @@ const INTENT_KEYWORDS: Array<{ intent: Intent; keywords: string[] }> = [
             "نمرة المكتب", "نمرة مكتب",
             "تواصل مع المكتب", "الاتصال بالمكتب", "الاتصال بمكتب",
             "امين المال", "الأمين", "الكاتب المحلي", "الكاتب الإقليمي", "الكاتب الجهوي",
+            "المكتب الإقليمي", "المكتب الجهوي", "المكتب المحلي",
             "امين المكتب", "سكرتير المكتب",
             "telephone bureau", "numero bureau", "numero du bureau",
             "contact bureau", "contacter le bureau",
