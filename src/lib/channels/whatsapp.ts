@@ -269,10 +269,10 @@ function normalizeDigitCommand(input: string): string | null {
 
 async function buildCategoryPageText(choice: string, page = 1): Promise<{ text: string; articleIds: string[]; currentPage: number; totalPages: number }> {
   const data = await getCategoryArticles(choice, page, 5);
-  const digitEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
 
   const lines: string[] = [
-    `📌 *${data.icon} ${data.label}* (صفحة ${data.currentPage} من ${data.totalPages})`,
+    `📌 *${data.icon} ${data.label}*`,
+    `📄 صفحة ${data.currentPage} من ${data.totalPages}`,
     "━━━━━━━━━━━━━━━━━━━━",
   ];
 
@@ -280,22 +280,28 @@ async function buildCategoryPageText(choice: string, page = 1): Promise<{ text: 
     lines.push("لا توجد مقالات مضافة حالياً في هذا القسم.");
   } else {
     data.articles.forEach((art, idx) => {
-      lines.push(`${digitEmojis[idx]} ${art.shortTitle}`);
+      // Each article: one title per line with elegant formatting
+      const articleNumber = idx + 1;
+      lines.push("");
+      lines.push(`*${articleNumber}️⃣  ${art.shortTitle}*`);
     });
   }
 
-  lines.push("────────────────");
+  lines.push("");
+  lines.push("─────────────────────");
   if (data.articles.length > 0) {
-    lines.push(`👉 أرسل رقم المقال (1-${data.articles.length}) لقراءة تفاصيله`);
+    lines.push(`📖 لقراءة المقال، أرسل رقمه: *1* إلى *${data.articles.length}*`);
   }
+  lines.push("");
+  // Numeric navigation: "6" = next page, "7" = previous page
   if (data.currentPage < data.totalPages) {
-    lines.push("👉 أرسل *التالي* أو *>* لعرض الصفحة التالية ➡️");
+    lines.push("➡️  *6*  الصفحة التالية");
   }
   if (data.currentPage > 1) {
-    lines.push("👉 أرسل *السابق* أو *<* لعرض الصفحة السابقة ⬅️");
+    lines.push("⬅️  *7*  الصفحة السابقة");
   }
-  lines.push("👉 أرسل *0* للرجوع للقائمة الرئيسية 🔙");
-  lines.push("💬 أو اكتب سؤالك مباشرة في أي وقت!");
+  lines.push("🔙  *0*  القائمة الرئيسية");
+  lines.push("💬 أو اكتب سؤالك في أي وقت!");
 
   return {
     text: lines.join("\n"),
@@ -1384,8 +1390,9 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
       }
     } else if (activeCategory) {
       const trimmedLower = messageContent.trim().toLowerCase();
-      const isNextPage = trimmedLower === "التالي" || trimmedLower === "next" || trimmedLower === ">" || trimmedLower === ">>";
-      const isPrevPage = trimmedLower === "السابق" || trimmedLower === "prev" || trimmedLower === "<" || trimmedLower === "<<";
+      // Numeric pagination: 6=next page, 7=previous page (shown in article list UI)
+      const isNextPage = trimmedLower === "التالي" || trimmedLower === "next" || trimmedLower === ">" || trimmedLower === ">>" || directDigit === "6";
+      const isPrevPage = trimmedLower === "السابق" || trimmedLower === "prev" || trimmedLower === "<" || trimmedLower === "<<" || directDigit === "7";
 
       // Next page
       if (isNextPage) {
@@ -1472,46 +1479,7 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
         return;
       }
 
-      // If user sends 7 (Hub Digital Services & Adhesion), show it immediately
-      if (directDigit === "7") {
-        await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: {
-            metadata: {
-              ...metadata,
-              activeCategory: null,
-              categoryPage: 1,
-              pageArticleIds: [],
-              selectedMenuChoice: "7",
-              selectedMenuLabel: MENU_LABELS["7"],
-            },
-          },
-        });
-        await recordExchange(conversation.id, messageContent, HUB_SERVICES_TEXT);
-        await sendText(jid, HUB_SERVICES_TEXT);
-        return;
-      }
-
-      // If user sends 6 while inside category, reload page 1 of news
-      if (directDigit === "6") {
-        const pageData = await buildCategoryPageText("6", 1);
-        await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: {
-            metadata: {
-              ...metadata,
-              activeCategory: "6",
-              categoryPage: 1,
-              pageArticleIds: pageData.articleIds,
-              selectedMenuChoice: "6",
-              selectedMenuLabel: MENU_LABELS["6"],
-            },
-          },
-        });
-        await recordExchange(conversation.id, messageContent, pageData.text);
-        await sendText(jid, pageData.text);
-        return;
-      }
+      // 6 and 7 are now used for pagination (next/prev page) — handled above via isNextPage/isPrevPage
     } else {
       // At Main Menu: 9 is Promotion calculation wizard
       if (directDigit === "9") {
