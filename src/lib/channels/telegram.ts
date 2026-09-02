@@ -84,7 +84,7 @@ const TELEGRAM_DOCUMENT_META_KEY = "telegramDocumentWizard";
 
 function telegramWelcomeText(): string {
   return [
-    "مرحباً بك الزميل/ة في المساعد الرقمي للجامعة الوطنية للتعليم FNE 👋",
+    "مرحباً بك الرفيق/ة في المساعد الرقمي للجامعة الوطنية للتعليم FNE 👋",
     "",
     "💬 اكتب سؤالك مباشرة في أي وقت وسأجيبك فوراً!",
     "",

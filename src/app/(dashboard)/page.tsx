@@ -20,6 +20,10 @@ async function getStats() {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
 
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
   const [
     totalConversations,
     activeConversations,
@@ -27,6 +31,7 @@ async function getStats() {
     openTickets,
     totalMessages,
     todayCount,
+    last7DaysCount,
     recentConversations,
   ] = await Promise.all([
     prisma.conversation.count(),
@@ -38,6 +43,12 @@ async function getStats() {
       where: {
         role: "assistant",
         createdAt: { gte: startOfToday },
+      },
+    }),
+    prisma.message.count({
+      where: {
+        role: "assistant",
+        createdAt: { gte: sevenDaysAgo },
       },
     }),
     prisma.conversation.findMany({
@@ -66,6 +77,7 @@ async function getStats() {
     openTickets,
     totalMessages,
     todayCount,
+    last7DaysCount,
     resolutionRate,
     recentConversations,
   };
@@ -152,6 +164,12 @@ export default async function DashboardPage() {
             </div>
             <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-medium">
               Questions traitées aujourd'hui : <strong className="text-slate-900 dark:text-white">{stats.todayCount}</strong>
+            </span>
+            <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-medium ml-4">
+              Questions posées (7j) : <strong className="text-slate-900 dark:text-white">{stats.last7DaysCount}</strong>
+            </span>
+            <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-medium ml-4">
+              Questions posées (total) : <strong className="text-slate-900 dark:text-white">{stats.totalMessages}</strong>
             </span>
           </div>
 
