@@ -158,14 +158,41 @@ else
       aarch64|arm64) COMPOSE_ARCH="aarch64" ;;
       *) log_error "Unsupported architecture: $ARCH"; exit 1 ;;
     esac
-    if curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-${COMPOSE_ARCH}" \
-         -o /usr/local/bin/docker-compose 2>/dev/null; then
-      chmod +x /usr/local/bin/docker-compose
+    # Try multiple download methods for the docker-compose binary
+    log_warn "Trying to download docker-compose binary..."
+    DOWNLOAD_OK=false
+    # Method 1: curl with redirects
+    if curl -fsSL --retry 3 -o /usr/local/bin/docker-compose \
+         "https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-${COMPOSE_ARCH}" 2>/dev/null; then
+      chmod +x /usr/local/bin/docker-compose 2>/dev/null && DOWNLOAD_OK=true
+    fi
+    # Method 2: wget fallback
+    if [[ "$DOWNLOAD_OK" == "false" ]] && command -v wget &>/dev/null; then
+      if wget -q -O /usr/local/bin/docker-compose \
+         "https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-${COMPOSE_ARCH}" 2>/dev/null; then
+        chmod +x /usr/local/bin/docker-compose 2>/dev/null && DOWNLOAD_OK=true
+      fi
+    fi
+    # Method 3: pip (always available with CWP)
+    if [[ "$DOWNLOAD_OK" == "false" ]] && command -v pip3 &>/dev/null; then
+      if pip3 install --quiet docker-compose 2>/dev/null; then
+        # pip installs as `docker-compose` in /usr/local/bin or /usr/bin
+        PIP_COMPOSE=$(find /usr/local/bin /usr/bin -name 'docker-compose' -type f 2>/dev/null | head -1)
+        if [[ -n "$PIP_COMPOSE" ]]; then
+          DOCKER_COMPOSE="$PIP_COMPOSE"
+          log_ok "Docker Compose installed via pip: $($PIP_COMPOSE version --short 2>/dev/null)"
+        fi
+      fi
+    fi
+    if [[ "$DOWNLOAD_OK" == "true" ]]; then
       DOCKER_COMPOSE="docker-compose"
       log_ok "Docker Compose standalone installed: $(docker-compose version --short 2>/dev/null)"
+    elif [[ -n "$DOCKER_COMPOSE" ]] && command -v "$DOCKER_COMPOSE" &>/dev/null; then
+      log_ok "Docker Compose available via: $DOCKER_COMPOSE"
     else
       log_error "Failed to install Docker Compose. Please install it manually."
-      log_info "Guide: https://docs.docker.com/compose/install/"
+      log_info "Try: pip3 install docker-compose"
+      log_info "Or: https://docs.docker.com/compose/install/"
       exit 1
     fi
   fi
