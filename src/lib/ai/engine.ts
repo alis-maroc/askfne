@@ -304,7 +304,20 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
 
   const locations = new Map<string, VerifiedOffice[]>();
   for (const office of matches) {
-    const label = office.province && office.province !== "—" ? office.province : office.name;
+    // Extract the canonical city name to group offices by location.
+    // "المكتب الإقليمي لـ تيزنيت" and office with province "تيزنيت" → SAME city
+    const cityFromName = office.name
+      .replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|المحلي)\s*ل?ـ?\s*/, "")
+      .trim();
+    let label: string;
+    if (office.province && office.province !== "—") {
+      label = office.province;
+    } else if (cityFromName && cityFromName !== office.name) {
+      // Regional office like "المكتب الإقليمي لـ تيزنيت" → use the city part
+      label = cityFromName;
+    } else {
+      label = office.name;
+    }
     const key = normalizeCitySkeleton(label);
     const group = locations.get(key) || [];
     group.push(office);
@@ -323,7 +336,12 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
   if (locations.size > 1) {
     const suggestions = [...locations.values()]
       .slice(0, 5)
-      .map((group) => group[0].province && group[0].province !== "—" ? group[0].province : group[0].name);
+      .map((group) => {
+        const o = group[0];
+        return o.province && o.province !== "—"
+          ? o.province
+          : o.name.replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|【المحلي)\s*ل?ـ?\s*/, "").trim() || o.name;
+      });
     return `لم أستطع تحديد المكتب بدقة. هل تقصد أحد هذه الأقاليم؟\n${suggestions.map((name) => `• ${name}`).join("\n")}\n\nاكتب الاسم كاملاً أو اختر من قائمة المكاتب.`;
   }
 
