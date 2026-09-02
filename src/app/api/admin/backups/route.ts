@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     for (const w of waAuthDirs) {
       if (fs.existsSync(w) && fs.readdirSync(w).length > 0) {
         logger.info(`[Backup] Archiving WhatsApp auth from ${w}`);
-        await execAsync(`tar -czf "${tmpWorkDir}/whatsapp-auth.tar.gz" -C "${w}" .`);
+        await execAsync(`tar --warning=no-file-changed -czf "${tmpWorkDir}/whatsapp-auth.tar.gz" -C "${w}" .`);
         waAuthFound = true;
         break;
       }
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
         try {
           fs.unlinkSync(path.join(backupDir, item.name));
           logger.info(`[Backup] Removed old backup for retention: ${item.name}`);
-        } catch (_) {}
+        } catch (_) { }
       }
     }
 
