@@ -196,7 +196,8 @@ while [[ -z "$OWLY_DIR" ]]; do
     case "$choice" in
       u|U) log_info "Pulling latest changes..."; (cd "$OWLY_DIR" && git pull) ;;
       c|C) OWLY_DIR=""; continue ;;
-      *) log_info "Cancelled."; exit 0 ;;
+      q|Q) log_info "Cancelled."; exit 0 ;;
+      *) log_info "Enter pressed -> defaulting to Update (git pull)..."; (cd "$OWLY_DIR" && git pull) ;;
     esac
   else
     PARENT=$(dirname "$OWLY_DIR")
