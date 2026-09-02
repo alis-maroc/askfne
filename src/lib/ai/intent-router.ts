@@ -128,12 +128,28 @@ const INTENT_KEYWORDS: Array<{ intent: Intent; keywords: string[] }> = [
         ],
     },
     {
+        // CONTACT_BUREAU must be checked BEFORE ORGANE_OFFICIEL so queries like
+        // "المكتب الإقليمي سيدي إفني" route to contact lookup, not roster refusal.
+        intent: INTENT.CONTACT_BUREAU,
+        keywords: [
+            "رقم المكتب", "رقم مكتب", "هاتف المكتب", "هاتف مكتب",
+            "نمرة المكتب", "نمرة مكتب",
+            "تواصل مع المكتب", "الاتصال بالمكتب", "الاتصال بمكتب",
+            "امين المال", "الأمين", "الكاتب المحلي", "الكاتب الإقليمي", "الكاتب الجهوي",
+            "المكتب الإقليمي", "المكتب الجهوي", "المكتب المحلي",
+            "المكتب الاقليمي", "المكتب الجهوي", "المكتب المحلي",
+            "امين المكتب", "سكرتير المكتب",
+            "telephone bureau", "numero bureau", "numero du bureau",
+            "contact bureau", "contacter le bureau",
+        ],
+    },
+    {
         intent: INTENT.ORGANE_OFFICIEL,
         keywords: [
-            // Bodies of the union
+            // Bodies of the union (national only — regional/local go to CONTACT_BUREAU)
             "اللجنة الادارية", "اللجنة الإدارية", "المجلس الوطني", "المكتب الوطني",
             "الجامعة الوطنية للتعليم", "النقابة الوطنية للتعليم",
-            "المكتب التنفيذي", "المكتب الجهوي", "المكتب الاقليمي", "المكتب المحلي",
+            "المكتب التنفيذي",
             // Members / composition queries — these require a verified roster
             "اعضاء اللجنة", "أعضاء اللجنة", "اعضاء المكتب", "أعضاء المكتب",
             "اعضاء المجلس", "أعضاء المجلس", "تشكيلة", "تركيبة",
@@ -152,23 +168,6 @@ const INTENT_KEYWORDS: Array<{ intent: Intent; keywords: string[] }> = [
             "وقفة احتجاجية", "وقفة وطنية", "احتجاج",
             "اصلاح التعليم", "إصلاح التعليم", "اصلاح منظومة", "إصلاح منظومة",
             "تكتل نقابي", "الجبهة النقابية",
-        ],
-    },
-    {
-        // CONTACT_BUREAU must only match when the user is clearly asking for a
-        // bureau's contact info. This is the trigger that gates geographic
-        // search. Adding more triggers here widens the funnel and reintroduces
-        // the false-positive class of bugs the router exists to prevent.
-        intent: INTENT.CONTACT_BUREAU,
-        keywords: [
-            "رقم المكتب", "رقم مكتب", "هاتف المكتب", "هاتف مكتب",
-            "نمرة المكتب", "نمرة مكتب",
-            "تواصل مع المكتب", "الاتصال بالمكتب", "الاتصال بمكتب",
-            "امين المال", "الأمين", "الكاتب المحلي", "الكاتب الإقليمي", "الكاتب الجهوي",
-            "المكتب الإقليمي", "المكتب الجهوي", "المكتب المحلي",
-            "امين المكتب", "سكرتير المكتب",
-            "telephone bureau", "numero bureau", "numero du bureau",
-            "contact bureau", "contacter le bureau",
         ],
     },
     // QUESTION_GENERALE is the default for everything that didn't match above.
