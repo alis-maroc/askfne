@@ -125,7 +125,7 @@ fi
 # Docker Compose v2 check (plugin) or v1 (standalone)
 if docker compose version &>/dev/null; then
   DOCKER_COMPOSE="docker compose"
-  export PATH="$PATH:/usr/libexec/docker/cli-plugins"
+  ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose 2>/dev/null && chmod +x /usr/local/bin/docker-compose
   log_ok "Docker Compose plugin: $(docker compose version --short 2>/dev/null)"
 elif command -v docker-compose &>/dev/null; then
   DOCKER_COMPOSE="docker-compose"
@@ -140,7 +140,7 @@ else
   fi
   if docker compose version &>/dev/null; then
     DOCKER_COMPOSE="docker compose"
-  export PATH="$PATH:/usr/libexec/docker/cli-plugins"
+  ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose 2>/dev/null && chmod +x /usr/local/bin/docker-compose
     log_ok "Docker Compose plugin installed: $(docker compose version --short 2>/dev/null)"
   else
     log_warn "Plugin install failed. Downloading docker-compose standalone binary..."
