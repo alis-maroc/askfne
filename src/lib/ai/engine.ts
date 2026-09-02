@@ -265,7 +265,9 @@ function classifyQueryIntent(query: string): QueryIntent {
   if (/(موقف الجامعه|موقف الجامعة|الحراك|اضراب|إضراب|بيان|بلاغ|مستجدات|اصلاح|إصلاح)/i.test(normalized)) {
     return "union_position";
   }
-  if (/(مكتب|كاتب|هاتف|رقم|نمره|نمرة|تواصل|اتصال|مسؤول|امين المال|أمين المال|اقليمي|إقليمي|جهوي|محلي|فرع)/i.test(normalized)) {
+  // IMPORTANT: "فرع" is intentionally excluded — it produces false positives for
+  // queries like "فرعية" (sub-branch in a school) that are NOT about union offices.
+  if (/(مكتب|كاتب|هاتف|رقم|نمره|نمرة|تواصل|اتصال|مسؤول|امين المال|أمين المال|اقليمي|إقليمي|جهوي|محلي)/i.test(normalized)) {
     return "office_contact";
   }
   return "knowledge";
