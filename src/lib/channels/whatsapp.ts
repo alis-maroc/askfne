@@ -277,6 +277,7 @@ async function buildCategoryPageText(choice: string, page = 1): Promise<{ text: 
   ];
 
   if (data.articles.length === 0) {
+    lines.push("");
     lines.push("لا توجد مقالات مضافة حالياً في هذا القسم.");
   } else {
     data.articles.forEach((art, idx) => {
@@ -289,18 +290,20 @@ async function buildCategoryPageText(choice: string, page = 1): Promise<{ text: 
 
   lines.push("");
   lines.push("─────────────────────");
+  // Navigation row: all controls on ONE single line, well-spaced.
+  // Reply with the article number to read it, 6 for next, 7 for previous, 0 for main menu.
+  const navParts: string[] = [];
   if (data.articles.length > 0) {
-    lines.push(`📖 لقراءة المقال، أرسل رقمه: *1* إلى *${data.articles.length}*`);
+    navParts.push(`📖 *1–${data.articles.length}* قراءة`);
   }
-  lines.push("");
-  // Numeric navigation: "6" = next page, "7" = previous page
   if (data.currentPage < data.totalPages) {
-    lines.push("➡️  *6*  الصفحة التالية");
+    navParts.push("➡️ *6* التالي");
   }
   if (data.currentPage > 1) {
-    lines.push("⬅️  *7*  الصفحة السابقة");
+    navParts.push("⬅️ *7* السابق");
   }
-  lines.push("🔙  *0*  القائمة الرئيسية");
+  navParts.push("🔙 *0* القائمة");
+  lines.push(navParts.join("   •   "));
   lines.push("💬 أو اكتب سؤالك في أي وقت!");
 
   return {
