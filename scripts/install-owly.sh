@@ -125,7 +125,11 @@ fi
 # Docker Compose v2 check (plugin) or v1 (standalone)
 if docker compose version &>/dev/null; then
   DOCKER_COMPOSE="docker compose"
-  ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose 2>/dev/null && chmod +x /usr/local/bin/docker-compose
+  # Symlink the plugin to /usr/local/bin/docker-compose (works for any plugin path)
+  PLUGIN_PATH=$(find /usr/libexec /usr/lib /usr/local -name 'docker-compose' -type f 2>/dev/null | head -1)
+  if [[ -n "$PLUGIN_PATH" ]] && [[ ! -e /usr/local/bin/docker-compose ]]; then
+    ln -sf "$PLUGIN_PATH" /usr/local/bin/docker-compose
+  fi
   log_ok "Docker Compose plugin: $(docker compose version --short 2>/dev/null)"
 elif command -v docker-compose &>/dev/null; then
   DOCKER_COMPOSE="docker-compose"
@@ -140,7 +144,11 @@ else
   fi
   if docker compose version &>/dev/null; then
     DOCKER_COMPOSE="docker compose"
-  ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose 2>/dev/null && chmod +x /usr/local/bin/docker-compose
+    # Symlink the plugin to /usr/local/bin/docker-compose
+    PLUGIN_PATH=$(find /usr/libexec /usr/lib /usr/local -name 'docker-compose' -type f 2>/dev/null | head -1)
+    if [[ -n "$PLUGIN_PATH" ]] && [[ ! -e /usr/local/bin/docker-compose ]]; then
+      ln -sf "$PLUGIN_PATH" /usr/local/bin/docker-compose
+    fi
     log_ok "Docker Compose plugin installed: $(docker compose version --short 2>/dev/null)"
   else
     log_warn "Plugin install failed. Downloading docker-compose standalone binary..."
