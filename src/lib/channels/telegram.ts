@@ -2,6 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { resolveCustomer } from "@/lib/customer-resolver";
 import { logger } from "@/lib/logger";
+import fs from "fs";
+import path from "path";
+import sharp from "sharp";
 import {
   buildRootMenu,
   buildNationalMenu,
@@ -129,10 +132,38 @@ const TELEGRAM_CATEGORY_SERVICES: Record<string, string> = {
   "service:news": "6",
 };
 
-async function renderTelegramServiceMenu(token: string, chatId: number): Promise<void> {
+async function renderTelegramServiceMenu(token: string, chatId: number, conversationId?: string): Promise<void> {
+  // Check if logo already sent to this conversation (persisted)
+  let shouldSendLogo = true;
+  if (conversationId) {
+    const conv = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { metadata: true },
+    }).catch(() => null);
+    const meta = (conv?.metadata as Record<string, unknown>) || {};
+    if (meta.fneLogoSent) shouldSendLogo = false;
+  }
+
+  // First time only: send a small (100px) FNE logo image before the menu text
+  if (shouldSendLogo) {
+    const sent = await sendTelegramLogoPhoto(token, chatId);
+    if (sent && conversationId) {
+      try {
+        const conv = await prisma.conversation.findUnique({
+          where: { id: conversationId },
+          select: { metadata: true },
+        });
+        const meta = (conv?.metadata as Record<string, unknown>) || {};
+        await prisma.conversation.update({
+          where: { id: conversationId },
+          data: { metadata: { ...meta, fneLogoSent: true } },
+        });
+      } catch {/* non-fatal */ }
+    }
+  }
+
   const welcomeText = [
     "🏛️ *المساعد الرقمي للجامعة الوطنية للتعليم FNE*",
-    "━━━━━━━━━━━━━━━━━━━━",
     "مرحباً بك الرفيق/ة 👋",
     "",
     "رهن إشارتكم لتسهيل الوصول للمعلومات والنصوص القانونية والتوجيهات النقابية.",
@@ -632,7 +663,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
 
     if (isStartCommand(messageText)) {
       await exitHubMenu(conversation.id, metadata);
-      await renderTelegramServiceMenu(token, chatId);
+      await renderTelegramServiceMenu(token, chatId, conversation.id);
       return null;
     }
 
@@ -642,7 +673,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
         where: { id: conversation.id },
         data: { metadata: { ...metadata, [TELEGRAM_DOCUMENT_META_KEY]: null } },
       });
-      await renderTelegramServiceMenu(token, chatId);
+      await renderTelegramServiceMenu(token, chatId, conversation.id);
       return null;
     }
 
@@ -793,7 +824,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
           where: { id: conversation.id },
           data: { metadata: { ...metadata, [PROMO_CALC_META_KEY]: null } },
         });
-        await renderTelegramServiceMenu(token, chatId);
+        await renderTelegramServiceMenu(token, chatId, conversation.id);
         return null;
       }
 
@@ -1084,6 +1115,42 @@ async function sendTelegramChatAction(
  * Send a PDF document to Telegram via multipart/form-data.
  * Returns true if sent successfully.
  */
+const FNE_TELEGRAM_LOGO_PATH = path.join(process.cwd(), "public", "logo_fne.gif");
+const FNE_TELEGRAM_LOGO_SIZE = 100; // px — small logo for inline Telegram display
+
+/**
+ * Send the FNE logo as a small photo in Telegram chat.
+ * Returns true on success, false on failure.
+ */
+async function sendTelegramLogoPhoto(token: string, chatId: number): Promise<boolean> {
+  try {
+    const raw = fs.readFileSync(FNE_TELEGRAM_LOGO_PATH);
+    const buffer = await sharp(raw)
+      .resize(FNE_TELEGRAM_LOGO_SIZE, FNE_TELEGRAM_LOGO_SIZE, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } })
+      .png()
+      .toBuffer();
+
+    const formData = new FormData();
+    formData.append("chat_id", String(chatId));
+    formData.append("photo", new Blob([new Uint8Array(buffer)], { type: "image/png" }), "logo_fne.png");
+    formData.append("caption", "🏛️ *الجامعة الوطنية للتعليم FNE*");
+
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: "POST",
+      body: formData as unknown as BodyInit,
+    });
+    const data = (await response.json().catch(() => ({}))) as { ok?: boolean };
+    if (data.ok) {
+      logger.info(`[Telegram] Logo sent to ${chatId}`);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    logger.warn("[Telegram] sendTelegramLogoPhoto error:", { error: String(err) });
+    return false;
+  }
+}
+
 export async function sendTelegramDocument(
   token: string,
   chatId: number,
