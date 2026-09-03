@@ -90,7 +90,7 @@ function telegramWelcomeText(): string {
     "💬 اكتب سؤالك مباشرة في أي وقت وسأجيبك فوراً!",
     "",
     "📌 أو أرسل *1* لاستعراض المكاتب والتنظيم النقابي",
-    "0️⃣ لإعادة هذه القائمة أرسل /start",
+    "🏠 لإعادة هذه القائمة اضغط الزر أدناه أو أرسل /start",
   ].join("\n");
 }
 
@@ -309,7 +309,9 @@ async function processHubMenuSelectionTelegram(
     const office = selected.office;
     if (office) {
       const text = formatOfficeContacts(office);
-      await sendTelegramMessage(token, chatId, text + "\n\n0️⃣ رجوع للقائمة الرئيسية");
+      await sendTelegramMessageWithKeyboard(token, chatId, text, [
+        [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+      ]);
       return;
     }
   }
@@ -319,7 +321,9 @@ async function processHubMenuSelectionTelegram(
     const office = offices.find((o) => o.level === "وطني") || offices[0];
     if (office) {
       const text = formatOfficeContacts(office);
-      await sendTelegramMessage(token, chatId, text + "\n\n0️⃣ رجوع للقائمة الرئيسية");
+      await sendTelegramMessageWithKeyboard(token, chatId, text, [
+        [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+      ]);
       return;
     }
   } else if (selected.id === "regional") {
@@ -395,7 +399,9 @@ async function handleHubMenuCommandTelegram(
   if (trimmed === "0" || normalizeDigitCommand(trimmed) === "0") {
     await exitHubMenu(conversationId, metadata);
     const token = await getTelegramToken();
-    if (token) await sendTelegramMessage(token, chatId, telegramWelcomeText());
+    if (token) await sendTelegramMessageWithKeyboard(token, chatId, telegramWelcomeText(), [
+      [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+    ]);
     return true;
   }
 
@@ -410,7 +416,9 @@ async function handleHubMenuCommandTelegram(
   if (isMainMenuTrigger) {
     await exitHubMenu(convId, metadata);
     const token = await getTelegramToken();
-    if (token) await sendTelegramMessage(token, chatId, telegramWelcomeText());
+    if (token) await sendTelegramMessageWithKeyboard(token, chatId, telegramWelcomeText(), [
+      [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+    ]);
     return true;
   }
 
@@ -464,7 +472,9 @@ async function handleHubMenuCommandTelegram(
   if (!selected) {
     const token = await getTelegramToken();
     if (token) {
-      await sendTelegramMessage(token, chatId, "⚠️ اختيار غير صحيح. اختر أحد الأزرار الظاهرة.\n\nاكتب 0 للعودة إلى القائمة الرئيسية.");
+      await sendTelegramMessageWithKeyboard(token, chatId, "⚠️ اختيار غير صحيح. اختر أحد الأزرار الظاهرة.", [
+        [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+      ]);
     }
     return true;
   }
@@ -509,8 +519,8 @@ async function renderHubMenuTextTelegram(
   else if (state.level === "provinces") title = state.parentLabel || "المكاتب الإقليمية";
   else if (state.level === "parallelBranches") title = state.parentLabel || "فروع التنظيم";
 
-  const backReminder = state.level !== "root" ? "\n\n🔙 اكتب 0 للعودة إلى القائمة الرئيسية" : "";
-  const text = title + backReminder;
+  // Note: "🏠 القائمة الرئيسية" button is already added to keyboard below
+  const text = title;
   const keyboard = formatMenuAsTelegramKeyboard(items);
   if (state.backState) {
     keyboard.push([
