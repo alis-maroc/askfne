@@ -298,54 +298,54 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
   const wantsJihawi = /جهوي|الجهوي|جهة|الجهة/i.test(query);
   const wantsMahali = /محلي|المحلي/i.test(query);
 
-  // Identify which query tokens are ROLE/LEVEL words vs CITY words.
-  // ROLE words (مكتب, اقليم, جهوي, etc.) cannot be used as city-match keys because
-  // they would match every office that mentions that level in its name/region/parent.
-  // CITY words are everything else.
-  const ROLE_SKELETONS = new Set([
-    "مكتب", "كاتب", "اقليم", "جهه", "جهوي", "محلي", "وطني", "فرع", "هاتف", "رقم",
-    "مدير", "منسق", "مسؤول", "امين", "شباب", "اتحاد", "تعليم", "fne",
-    "الجامعه", "النقابيه", "النقابه", "تنظيم", "عضو",
-  ]);
-  const cityTokens = tokens.filter((token) => !ROLE_SKELETONS.has(normalizeCitySkeleton(token)));
-  const cityNormalized = cityTokens.map((t) => normalizeCitySkeleton(t)).filter((t) => t.length >= 2);
-  // normalizedTokens kept for STEP 2 backwards compatibility (includes role tokens).
-  const normalizedTokens = tokens.map((token) => normalizeCitySkeleton(token)).filter((token) => token.length >= 2);
-
   // STEP 1 — Direct name match (highest priority).
-  // Only CITY tokens are required to match the canonical city in an office NAME
-  // (not just region/province). This avoids false matches like "المكتب الاقليمي فاس"
-  // returning suggestions because role tokens were excluded.
-  const stripPrefix = (name: string) =>
-    name.replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|المحلي)\s*ل?ـ?\s*/, "").trim();
+  // Use normalizeForMatch on the original query and office names, then check that
+  // every NON-ROLE word in the query appears in the office's canonical city name
+  // (after stripping the office-type prefix).
+  // This works for queries like "المكتب الاقليمي فاس" where "فاس" is the city
+  // and "مكتب"/"اقليم" are role words that should be ignored.
+  const ROLE_WORDS_NORM = new Set([
+    "مكتب", "الكتب", "كاتب", "الكاتب", "اقليم", "اقليمي", "الاقليم", "الاقليمي",
+    "جهه", "جهوي", "الجهوي", "جهة", "الجهة", "محلي", "المحلي", "وطني", "الوطني",
+    "فرع", "الفرع", "هاتف", "رقم", "مدير", "منسق", "مسؤول", "امين",
+    "شباب", "اتحاد", "تعليم", "fne", "الجامعه", "النقابيه", "النقابه",
+    "تنظيم", "عضو",
+  ]);
+  const queryNorm = normalizeForMatch(query);
+  const queryCityWords = queryNorm.split(/\s+/).filter((w) => w.length >= 2 && !ROLE_WORDS_NORM.has(w));
+  // Also include bare tokens (from extractQueryTokens) so we don't miss words that
+  // normalizeForMatch removed (e.g. attached prepositions).
+  const ROLE_PREFIX_RE = /^(?:مكتب|كاتب|اقليم|جهوي|محلي|وطني|فرع)/i;
 
-  if (cityNormalized.length >= 1) {
-    const directNameMatches = offices.filter((office) => {
-      if (!office.name || office.name === "—") return false;
-      const nameWords = normalizeCitySkeleton(stripPrefix(office.name)).split(/\s+/).filter(Boolean);
-      return cityNormalized.every((token) => nameWords.some((word) => word === token));
-    });
-    if (directNameMatches.length >= 1) {
-      // Prefer the office whose level matches the query intent.
-      let chosen: VerifiedOffice | undefined;
-      if (wantsIqlimi) chosen = directNameMatches.find((o) => o.level === "إقليمي");
-      else if (wantsJihawi) chosen = directNameMatches.find((o) => o.level === "جهوي");
-      else if (wantsMahali) chosen = directNameMatches.find((o) => o.level === "محلي");
-      if (!chosen) {
-        // No explicit level in query → prefer إقليمي (most common ask) over جهوي.
-        chosen = directNameMatches.find((o) => o.level === "إقليمي");
-      }
-      if (!chosen) chosen = directNameMatches[0];
-      return formatVerifiedOffice(chosen);
+  let directNameMatches: VerifiedOffice[] = offices.filter((office) => {
+    if (!office.name || office.name === "—") return false;
+    const nameNorm = normalizeForMatch(office.name);
+    const stripped = nameNorm.replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|المحلي|الوطني)\s*ل?ـ?\s*/, "").trim();
+    // All city words must appear in the stripped office name.
+    if (queryCityWords.length > 0 && !queryCityWords.every((qw) => stripped.includes(qw))) {
+      return false;
     }
-  } else if (wantsIqlimi || wantsJihawi || wantsMahali) {
-    // No city tokens (all filtered as roles), but query contains a level word.
-    // E.g. "المكتب الاقليمي فاس" — all tokens "مكتب", "اقليم" filtered, only "فاس"
-    // would be a city token. If even those are absent (e.g. "المكتب الاقليمي"), return null
-    // and let the caller show the menu. We need at least ONE city token to proceed.
-    return null;
+    // Also check bare tokens (e.g. raw "فاس" stays "فاس" after normalizeForMatch).
+    const tokenWords = tokens.filter((t) => t.length >= 3 && !ROLE_PREFIX_RE.test(t) && !ROLE_WORDS_NORM.has(normalizeForMatch(t)));
+    if (tokenWords.length > 0 && !tokenWords.every((tw) => stripped.includes(normalizeForMatch(tw)))) {
+      return false;
+    }
+    return true;
+  });
+
+  if (directNameMatches.length >= 1) {
+    // Prefer the office whose level matches the query intent.
+    let chosen: VerifiedOffice | undefined;
+    if (wantsIqlimi) chosen = directNameMatches.find((o) => o.level === "إقليمي");
+    else if (wantsJihawi) chosen = directNameMatches.find((o) => o.level === "جهوي");
+    else if (wantsMahali) chosen = directNameMatches.find((o) => o.level === "محلي");
+    if (!chosen) chosen = directNameMatches.find((o) => o.level === "إقليمي");
+    if (!chosen) chosen = directNameMatches[0];
+    return formatVerifiedOffice(chosen);
   }
 
+  // normalizedTokens kept for STEP 2 backwards compatibility (includes role tokens).
+  const normalizedTokens = tokens.map((token) => normalizeCitySkeleton(token)).filter((token) => token.length >= 2);
   if (normalizedTokens.length === 0) return null;
 
   // STEP 2 — Broad match (name + province + region + parent).
@@ -556,12 +556,10 @@ export async function buildOfficeDirectAnswer(query: string): Promise<string | n
   // leaving zero city tokens. Without this guard, resolveVerifiedOffice is never reached.
   const isBureauQuery = /مكتب|كاتب|اقليم|جهوي|محلي|فرع|وطني/i.test(normQ);
   const tokens = extractQueryTokens(normQ).filter((t) => t.length >= 3);
-
   if (tokens.length === 0 && !isBureauQuery) return null;
 
   // Contact details are high-impact data: validate against the official local registry
   // before any fuzzy or remote lookup can return a possibly wrong province.
-  // Pass the original (unfiltered) tokens so resolveVerifiedOffice can separate city/role.
   const verifiedAnswer = await resolveVerifiedOffice(query, tokens, isOfficeContact);
   if (verifiedAnswer) return verifiedAnswer;
 
