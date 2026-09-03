@@ -43,6 +43,7 @@ model Settings {
   whatsappApiKey      String   @default("")
   whatsappPhone       String   @default("")
   telegramBotToken    String   @default("")
+  adminTelegramChatId String   @default("")
   createdAt           DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

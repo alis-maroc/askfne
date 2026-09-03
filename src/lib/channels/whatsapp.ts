@@ -105,6 +105,44 @@ const waState = g.__waState;
 const MESSAGE_DEDUP_TTL_MS = 2 * 60 * 1000;
 const processedInboundMessages = new Map<string, number>();
 
+/**
+ * Send a one-off alert to the admin's Telegram chat when WhatsApp disconnects.
+ * Uses the adminTelegramChatId from Settings table. Silent no-op if not set.
+ */
+async function alertAdminOnDisconnect(message: string): Promise<void> {
+  try {
+    const settings = await prisma.settings.findFirst({
+      select: { telegramBotToken: true, adminTelegramChatId: true },
+    });
+    if (!settings?.telegramBotToken || !settings?.adminTelegramChatId) {
+      logger.info("[WhatsApp/Baileys] Admin Telegram not configured — skipping disconnect alert");
+      return;
+    }
+    const chatId = Number(settings.adminTelegramChatId);
+    if (!Number.isFinite(chatId)) return;
+    const text = [
+      "⚠️ *تنبيه: FNE Bot WhatsApp*",
+      "━━━━━━━━━━━━━━━━━━━━",
+      message,
+      "",
+      `⏰ الوقت: ${new Date().toLocaleString("fr-FR", { timeZone: "Africa/Casablanca" })}`,
+    ].join("\n");
+    const response = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
+    });
+    const data = (await response.json().catch(() => ({}))) as { ok?: boolean };
+    if (data.ok) {
+      logger.info(`[WhatsApp/Baileys] Disconnect alert sent to admin (chat ${chatId})`);
+    } else {
+      logger.warn("[WhatsApp/Baileys] Disconnect alert failed:", { response: JSON.stringify(data) });
+    }
+  } catch (err) {
+    logger.warn("[WhatsApp/Baileys] alertAdminOnDisconnect error:", { error: String(err) });
+  }
+}
+
 const MENU_LABELS: Record<string, string> = {
   "1": "المكاتب والتنظيم النقابي",
   "2": "القانون الأساسي للجامعة",
@@ -1941,10 +1979,12 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
         waState.isStarting = false;
         waState.connectionStatus = "disconnected";
         waState.statusMessage = "Logged out. Please reconnect from the dashboard.";
+        await alertAdminOnDisconnect("Session WhatsApp expirée ou invalidée. Veuillez rescan le QR depuis le tableau de bord.");
       } else {
         waState.isStarting = false;
         waState.connectionStatus = "error";
         waState.statusMessage = "Failed to reconnect after multiple attempts.";
+        await alertAdminOnDisconnect("Échec de reconnexion WhatsApp après plusieurs tentatives. Vérifiez le serveur.");
       }
     }
   });
