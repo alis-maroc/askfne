@@ -109,7 +109,7 @@ const TELEGRAM_SERVICE_MENU: HubMenuItem[] = [
 
 const TELEGRAM_SERVICE_PROMPTS: Record<string, string> = {
   "service:documents": "📄 توليد المراسلات والطلبات الإدارية\n\nاكتب نوع الطلب أو المراسلة التي تريد إعدادها.",
-  "service:promotion": "🧮 حساب وتدقيق نقط الترقية\n\nاكتب سؤالك حول شروط أو حساب نقط الترقية.",
+  "service:promotion": "🧮 *خدمة حساب وتدقيق نقط الترقية*\n━━━━━━━━━━━━━━━━━━━━\n⏳ *هذه الخدمة التفاعلية في طور الإعداد والبرمجة داخل الشات حالياً.*\n\n💡 يمكنك في الوقت الراهن استخدام أداة الحساب الرسمية المتاحة عبر المنصة الرقمية:\n🔗 https://hub.taalim.org/calc_promotion_points.php\n\n────────────────\n🏠 للقائمة الرئيسية اضغط الزر أدناه",
   "service:suggestion": "📨 اكتب ملاحظتك أو اقتراحك للجامعة مباشرة.",
 };
 
@@ -122,10 +122,22 @@ const TELEGRAM_CATEGORY_SERVICES: Record<string, string> = {
 };
 
 async function renderTelegramServiceMenu(token: string, chatId: number): Promise<void> {
+  const welcomeText = [
+    "🏛️ *المساعد الرقمي للجامعة الوطنية للتعليم FNE*",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "مرحباً بك الرفيق/ة 👋",
+    "",
+    "رهن إشارتكم لتسهيل الوصول للمعلومات والنصوص القانونية والتوجيهات النقابية.",
+    "",
+    "💬 *اكتب سؤالك مباشرة* وسأجيبك فوراً!",
+    "",
+    "📌 *أو اختر أحد الخدمات أدناه:*",
+  ].join("\n");
+
   await sendTelegramMessageWithKeyboard(
     token,
     chatId,
-    "مرحباً بك في المساعد الرقمي للجامعة الوطنية للتعليم FNE\n\nاختر الخدمة التي تريد:",
+    welcomeText,
     formatMenuAsTelegramKeyboard(TELEGRAM_SERVICE_MENU)
   );
 }
