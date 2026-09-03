@@ -831,7 +831,7 @@ async function sendText(jid: string, text: string): Promise<void> {
 import sharp from "sharp";
 
 const FNE_LOGO_PATH = path.join(process.cwd(), "public", "logo_fne.gif");
-const FNE_LOGO_MAX_WIDTH = 280; // pixels — small, discreet logo for the menu header
+const FNE_LOGO_MAX_WIDTH = 64; // pixels — icon-sized logo, inline with menu text (was 280)
 
 /**
  * Read the FNE logo, resize it to a small width, and send it with the menu text as caption.
@@ -846,10 +846,10 @@ async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> 
     let buffer: Buffer | null = null;
     try {
       const raw = fs.readFileSync(FNE_LOGO_PATH);
-      // Resize to a small, discreet header logo (preserves aspect ratio)
+      // Resize to icon-sized logo (preserves aspect ratio)
       buffer = await sharp(raw)
         .resize({ width: FNE_LOGO_MAX_WIDTH, withoutEnlargement: true })
-        .jpeg({ quality: 80 })
+        .jpeg({ quality: 70 })
         .toBuffer();
     } catch (imgErr) {
       logger.warn("[WhatsApp/Baileys] FNE logo unavailable, sending menu as plain text:", {
