@@ -654,13 +654,23 @@ async function sendArticleMessages(
 ): Promise<void> {
   const { dateStr, body } = cleanArticleBodyForChat(article.content, article.title);
 
+  // Clean the body further: remove any residual links, category labels, and "read more" patterns
+  let cleanBody = body.trim();
+  // Remove residual [label](url) markdown links that cleanArticleBodyForChat may have missed
+  cleanBody = cleanBody.replace(/\[([^\]]+)\]\(https?:\/\/[^\)]+\)/g, "$1");
+  // Remove standalone URLs
+  cleanBody = cleanBody.replace(/https?:\/\/\S+/g, "");
+  // Remove "read more" / "اقرأ المزيد" / "للمزيد" patterns that may have slipped through
+  cleanBody = cleanBody.replace(/(?:Lire la suite|اقرأ المزيد|اقرأ المزيد|Lire suite|Read more|Read more...|اقرأ أكثر|للمزيد|للمزيد من التفاصيل).*/gi, "");
+  // Trim any dangling punctuation or newlines at the end
+  cleanBody = cleanBody.replace(/[\s\n\r]+$/, "");
+
   const header = [`📌 *${article.title}*`];
   if (dateStr) {
-    header.push(`📅 *التاريخ:* ${dateStr}`);
+    header.push(`📅 *${dateStr}*`);
   }
   header.push("━━━━━━━━━━━━━━━━━━━━");
 
-  const fullText = body.trim();
   const footer = [
     "",
     "────────────────",
@@ -668,7 +678,7 @@ async function sendArticleMessages(
     "📋 للرجوع للقائمة الرئيسية أرسل *0*",
   ].join("\n");
 
-  const finalMsg = `${header.join("\n")}\n${fullText}${footer}`;
+  const finalMsg = `${header.join("\n")}\n${cleanBody}${footer}`;
   if (conversationId && userMsg) {
     await recordExchange(conversationId, userMsg, finalMsg);
   }
