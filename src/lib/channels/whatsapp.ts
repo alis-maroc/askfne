@@ -252,7 +252,7 @@ function buildMenuText(): string {
     "4️⃣ ⚖️ *النظام الأساسي*",
     "5️⃣ 🎒 *الدخول المدرسي*",
     "6️⃣ 📢 *آخر البيانات والمستجدات*",
-    "7️⃣ 🤝 *والخدمات الرقمية (Hub)*",
+    "7️⃣ 🤝 *الخدمات الرقمية (Hub)*",
     "8️⃣ 📄 *المراسلات الإدارية (PDF)*",
     "9️⃣ 🧮 *حساب نقط الترقية*",
     "📨 لإرسال ملاحظة اكتب *اقتراح*",
@@ -972,7 +972,7 @@ function extractMessageContent(msg: unknown): string {
 }
 
 // Feedback footer appended to every AI response on WhatsApp
-const WA_FEEDBACK_FOOTER = "\n━━━━━━━━━━━━━━━━━━━\n💬 هل أفادك هذا الجواب؟ تفاعل بـ 👍 أو 👎";
+const WA_FEEDBACK_FOOTER = "\n━━━━━━━━━━━━\n💬 هل أفادك هذا الجواب؟ تفاعل بـ 👍 أو 👎";
 
 async function handleIncomingMessage(jid: string, body: string, pushName?: string, messageId?: string, wasVoice: boolean = false): Promise<void> {
   try {
