@@ -308,10 +308,15 @@ function cityWordMatches(strippedName: string, queryWord: string): boolean {
 
 async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzySuggestions: boolean): Promise<string | null> {
   // STEP 0: Detect level intent from the ORIGINAL query.
-  const wantsIqlimi = /إقليمي|الإقليمي|إقليم|الإقليم/i.test(query);
-  const wantsJihawi = /جهوي|الجهوي|جهة|الجهة/i.test(query);
-  const wantsMahali = /محلي|المحلي/i.test(query);
-  const wantsWatani = /وطني|الوطني/i.test(query);
+  // Use a normalized match that handles Arabic alef variants (إ/ا/أ/آ) and alif maqsura (ى/ي).
+  const normQ = query
+    .replace(/[إأآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه");
+  const wantsIqlimi = /(ال)?اقليم|إقليم|الإقليم/i.test(normQ) || /(ال)?اقليم/i.test(query);
+  const wantsJihawi = /(ال)?جهوي|جهة|الجهوي/i.test(normQ) || /(ال)?جهوي|جهة/i.test(query);
+  const wantsMahali = /(ال)?محلي/i.test(normQ) || /(ال)?محلي/i.test(query);
+  const wantsWatani = /(ال)?وطني/i.test(normQ) || /(ال)?وطني/i.test(query);
 
   // STEP 1: Extract city/region tokens from the query (exclude role words).
   const ROLE_WORDS = new Set([
@@ -374,17 +379,8 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
     return { office, score: matchCount + exactBoost, stripped };
   });
 
-  scored.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    // Tiebreak: prefer level matching query intent.
-    if (wantsJihawi) return a.office.level === "جهوي" ? -1 : 1;
-    if (wantsIqlimi) return a.office.level === "إقليمي" ? -1 : 1;
-    if (wantsMahali) return a.office.level === "محلي" ? -1 : 1;
-    if (wantsWatani) return a.office.level === "وطني" ? -1 : 1;
-    // Default priority: وطني > جهوي > إقليمي > محلي
-    const levelPriority: Record<string, number> = { "وطني": 0, "جهوي": 1, "إقليمي": 2, "محلي": 3 };
-    return (levelPriority[a.office.level] ?? 9) - (levelPriority[b.office.level] ?? 9);
-  });
+  // Sort by score only. Level tiebreak is done in STEP 4.
+  scored.sort((a, b) => b.score - a.score);
 
   const top = scored[0];
   if (top.score === 0) {
