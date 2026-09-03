@@ -296,6 +296,35 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
   const normalizedTokens = tokens.map((token) => normalizeCitySkeleton(token)).filter((token) => token.length >= 2);
   if (normalizedTokens.length === 0) return null;
 
+  // STEP 1 — Direct name match (highest priority).
+  // If the query tokens match the canonical city in an office NAME (not just region/province),
+  // return that single office without going through region-based grouping.
+  // Example: "المكتب الإقليمي الرباط" → tokens match "الرباط" in the office name only,
+  // even though 12 other offices share the region "الرباط سلا القنيطرة".
+  const stripPrefix = (name: string) =>
+    name.replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|المحلي)\s*ل?ـ?\s*/, "").trim();
+  const directNameMatches = offices.filter((office) => {
+    if (!office.name || office.name === "—") return false;
+    const nameWords = normalizeCitySkeleton(stripPrefix(office.name)).split(/\s+/).filter(Boolean);
+    return normalizedTokens.every((token) => nameWords.some((word) => word === token));
+  });
+  if (directNameMatches.length === 1) {
+    const only = directNameMatches[0];
+    if (only.level === "إقليمي" || only.level === "جهوي" || only.level === "محلي") {
+      return formatVerifiedOffice(only);
+    }
+  }
+  if (directNameMatches.length > 1) {
+    // Multiple offices share the same canonical city in their name (rare).
+    // Prefer the regional/جهوي one if unique, otherwise fall through to grouping.
+    const regional = directNameMatches.filter((o) => o.level === "إقليمي" || o.level === "جهوي");
+    if (regional.length === 1) {
+      return formatVerifiedOffice(regional[0]);
+    }
+  }
+
+  // STEP 2 — Broad match (name + province + region + parent).
+  // Used for fuzzy / region-only queries like "سلا" or partial names.
   const matches = offices.filter((office) => {
     const searchable = [office.name, office.province, office.region, office.parentOffice]
       .filter((value) => value && value !== "—")
