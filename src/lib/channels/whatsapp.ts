@@ -81,6 +81,8 @@ interface GlobalWhatsAppState {
   isStarting: boolean;
   isManuallyStopping: boolean;
   reconnectTimeout: NodeJS.Timeout | null;
+  /** Track conversations where logo has already been sent (to send only once per conversation) */
+  logoSentTo: Set<string>;
 }
 
 const g = globalThis as unknown as { __waState?: GlobalWhatsAppState };
@@ -94,6 +96,7 @@ if (!g.__waState) {
     isStarting: false,
     isManuallyStopping: false,
     reconnectTimeout: null,
+    logoSentTo: new Set<string>(),
   };
 }
 
@@ -831,19 +834,19 @@ async function sendText(jid: string, text: string): Promise<void> {
 import sharp from "sharp";
 
 const FNE_LOGO_PATH = path.join(process.cwd(), "public", "logo_fne.gif");
-const FNE_LOGO_ICON_SIZE = 24; // pixels — small icon, slightly larger than emoji
+const FNE_LOGO_FIRST_SIZE = 100; // pixels — small but readable logo, sent only on first menu display
 
 /**
- * Read the FNE logo, resize it to a small icon, and send it as a standalone message.
- * Falls back to nothing if the logo file is missing or sharp fails.
+ * Read the FNE logo, resize it to a small width, and send it as a standalone message.
+ * Returns true if the logo was sent, false otherwise (missing file, sharp fail, etc).
  */
-async function sendLogoIcon(jid: string): Promise<boolean> {
+async function sendLogoIcon(jid: string, size: number = FNE_LOGO_FIRST_SIZE): Promise<boolean> {
   if (!waState.sock) return false;
   try {
     const raw = fs.readFileSync(FNE_LOGO_PATH);
     const buffer = await sharp(raw)
-      .resize({ width: FNE_LOGO_ICON_SIZE, withoutEnlargement: true })
-      .jpeg({ quality: 70 })
+      .resize({ width: size, withoutEnlargement: true })
+      .jpeg({ quality: 75 })
       .toBuffer();
     if (!buffer || buffer.length === 0) return false;
 
@@ -863,7 +866,7 @@ async function sendLogoIcon(jid: string): Promise<boolean> {
       image: buffer,
       mimetype: "image/jpeg",
     });
-    logger.info(`[WhatsApp/Baileys] Logo icon (${buffer.length} bytes) sent to ${jid}`);
+    logger.info(`[WhatsApp/Baileys] Logo (${size}px, ${buffer.length} bytes) sent to ${jid}, id: ${sendRes?.key?.id || "unknown"}`);
     return true;
   } catch (err) {
     logger.warn("[WhatsApp/Baileys] sendLogoIcon error:", { error: String(err) });
@@ -900,8 +903,9 @@ async function sendMenuText(jid: string, text: string): Promise<boolean> {
 }
 
 /**
- * Read the FNE logo, resize it to a small icon (24px), and send it BEFORE the menu text.
- * Logo appears as a small icon message, then menu text follows.
+ * Send the menu text. If this is the FIRST time we send a menu to this jid,
+ * the FNE logo (100px) is sent first as a separate image. Subsequent menu
+ * displays in the same conversation send text only.
  * Falls back to plain-text menu if the logo file is missing or sharp fails.
  */
 async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> {
@@ -910,15 +914,21 @@ async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> 
     return false;
   }
 
-  // First: send logo icon (standalone, no caption)
-  await sendLogoIcon(jid);
+  const isFirstTime = !waState.logoSentTo.has(jid);
 
-  // Small pause between logo and text
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // First time only: send the logo as a small standalone image
+  if (isFirstTime) {
+    const sent = await sendLogoIcon(jid, FNE_LOGO_FIRST_SIZE);
+    if (sent) {
+      waState.logoSentTo.add(jid);
+      // Small pause between logo and text
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
 
-  // Then: send menu text
+  // Send menu text
   await sendMenuText(jid, caption);
-  logger.info(`[WhatsApp/Baileys] Menu with logo icon sent to ${jid}`);
+  logger.info(`[WhatsApp/Baileys] Menu sent to ${jid} (logo: ${isFirstTime ? "yes (first)" : "no (already sent)"})`);
   return true;
 }
 
