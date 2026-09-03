@@ -36,6 +36,15 @@ import { getCurrentQuestion, processAnswer, isComplete, serializeWizardState, ty
 import { REQUEST_TYPES, type RequestType } from "@/lib/requests/types";
 import { buildDeliveryMessage, generateAdminRequest } from "@/lib/requests/generator";
 import { generateRequestPdf } from "@/lib/requests/pdf-generator";
+import {
+  processPromoAnswer,
+  getPromoQuestion,
+  formatPromoSummary,
+  serializePromoCalcState,
+  type PromotionCalcState,
+} from "@/lib/requests/promotion-calc";
+
+const PROMO_CALC_META_KEY = "promoCalcState";
 
 interface TelegramUser {
   id: number;
@@ -109,7 +118,6 @@ const TELEGRAM_SERVICE_MENU: HubMenuItem[] = [
 
 const TELEGRAM_SERVICE_PROMPTS: Record<string, string> = {
   "service:documents": "📄 توليد المراسلات والطلبات الإدارية\n\nاكتب نوع الطلب أو المراسلة التي تريد إعدادها.",
-  "service:promotion": "🧮 *خدمة حساب وتدقيق نقط الترقية*\n━━━━━━━━━━━━━━━━━━━━\n⏳ *هذه الخدمة التفاعلية في طور الإعداد والبرمجة داخل الشات حالياً.*\n\n💡 يمكنك في الوقت الراهن استخدام أداة الحساب الرسمية المتاحة عبر المنصة الرقمية:\n🔗 https://hub.taalim.org/calc_promotion_points.php\n\n────────────────\n🏠 للقائمة الرئيسية اضغط الزر أدناه",
   "service:suggestion": "📨 اكتب ملاحظتك أو اقتراحك للجامعة مباشرة.",
 };
 
@@ -760,7 +768,68 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
       }
       return null;
     }
+    // ── Promotion Calculation Wizard ─────────────────────────────────────────
+    const promoCalcState = metadata[PROMO_CALC_META_KEY] as PromotionCalcState | undefined;
+    if (promoCalcState?.active) {
+      if (messageText.trim() === "0") {
+        // Cancel and return to main menu
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { metadata: { ...metadata, [PROMO_CALC_META_KEY]: null } },
+        });
+        await renderTelegramServiceMenu(token, chatId);
+        return null;
+      }
+
+      const { state: updatedPromo, isDone, error } = processPromoAnswer(promoCalcState, messageText);
+      if (error) {
+        await sendTelegramMessageWithKeyboard(token, chatId, `${error}\n\n${getPromoQuestion(promoCalcState)}`, [
+          [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+        ]);
+        return null;
+      }
+
+      if (isDone) {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { metadata: { ...metadata, [PROMO_CALC_META_KEY]: null } },
+        });
+        const summary = formatPromoSummary(updatedPromo);
+        await sendTelegramMessageWithKeyboard(token, chatId, summary, [
+          [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+        ]);
+        return null;
+      }
+
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { metadata: { ...metadata, [PROMO_CALC_META_KEY]: serializePromoCalcState(updatedPromo) } },
+      });
+      const nextQ = getPromoQuestion(updatedPromo);
+      await sendTelegramMessageWithKeyboard(token, chatId, nextQ, [
+        [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+      ]);
+      return null;
+    }
+
     if (TELEGRAM_SERVICE_PROMPTS[messageText]) {
+      // For promotion, initiate the wizard instead of sending text
+      if (messageText === "service:promotion") {
+        const initPromo: PromotionCalcState = {
+          active: true,
+          step: 0,
+          data: {},
+        };
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { metadata: { ...metadata, [PROMO_CALC_META_KEY]: serializePromoCalcState(initPromo) } },
+        });
+        const firstQ = getPromoQuestion(initPromo);
+        await sendTelegramMessageWithKeyboard(token, chatId, firstQ, [
+          [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+        ]);
+        return null;
+      }
       await sendTelegramScreen(token, chatId, TELEGRAM_SERVICE_PROMPTS[messageText]);
       return null;
     }
