@@ -116,16 +116,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Write manifest
-    const manifest = `created_at=${stamp}\nwhatsapp_auth=${waAuthFound}\n`;
+    // 3. Copy .env if present (for full recovery)
+    const envPaths = [path.join(process.cwd(), ".env"), "/app/.env", "/root/owly/.env"];
+    let envFound = false;
+    for (const e of envPaths) {
+      if (fs.existsSync(e)) {
+        logger.info(`[Backup] Copying .env from ${e}`);
+        fs.copyFileSync(e, path.join(tmpWorkDir, ".env"));
+        envFound = true;
+        break;
+      }
+    }
+
+    // 4. Write manifest
+    const manifest = `created_at=${stamp}\nwhatsapp_auth=${waAuthFound}\nenv_backup=${envFound}\n`;
     fs.writeFileSync(path.join(tmpWorkDir, "manifest.txt"), manifest, "utf-8");
 
-    // 4. Create final archive
+    // 5. Create final archive
     logger.info(`[Backup] Creating final archive: ${archivePath}`);
     await execAsync(`tar -czf "${archivePath}" -C "${tmpWorkDir}" .`);
     fs.chmodSync(archivePath, 0o644);
 
-    // 5. Cleanup temporary work directory
+    // 6. Cleanup temporary work directory
     fs.rmSync(tmpWorkDir, { recursive: true, force: true });
 
     // 6. Enforce retention limit: keep latest 7 backups
