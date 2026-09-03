@@ -1914,11 +1914,14 @@ export async function chat(
     ? await confirmPendingTicket(conversationId)
     : null;
 
+  const trimmedMsg = userMessage.trim();
   const isDisclaimerQuery =
-    userMessage.trim() === "7" ||
+    trimmedMsg === "7" ||
+    trimmedMsg === "ميثاق" ||
+    /ميثاق\s*(ال)?استخدام/.test(trimmedMsg) ||
+    /توجيه\s*تنظيمي/.test(trimmedMsg) ||
     userMessage.includes("إخلاء مسؤولية") ||
     userMessage.includes("إخلاء المسؤولية") ||
-    userMessage.includes("ميثاق الاستخدام") ||
     userMessage.includes("توجيه تنظيمي وإخلاء مسؤولية");
 
   if (isDisclaimerQuery) {
