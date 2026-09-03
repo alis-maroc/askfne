@@ -108,15 +108,15 @@ function telegramWelcomeText(): string {
 
 const TELEGRAM_SERVICE_MENU: HubMenuItem[] = [
   { id: "service:offices", label: "🏢 المكاتب والتنظيم النقابي" },
-  { id: "service:statutes", label: "📜 القانون الأساسي للجامعة FNE" },
-  { id: "service:calendar", label: "📅 مقرر السنة الدراسية والعطل" },
-  { id: "service:public-service", label: "⚖️ النظام الأساسي والوظيفة العمومية" },
-  { id: "service:school", label: "🎒 الدخول المدرسي والحركة الانتقالية" },
+  { id: "service:statutes", label: "📜 القانون الأساسي للجامعة" },
+  { id: "service:calendar", label: "📅 السنة الدراسية والعطل" },
+  { id: "service:public-service", label: "⚖️ النظام الأساسي" },
+  { id: "service:school", label: "🎒 الدخول المدرسي" },
   { id: "service:news", label: "📢 آخر البيانات والمستجدات" },
-  { id: "service:hub", label: "🤝 الانخراط والخدمات الرقمية (Hub)" },
-  { id: "service:documents", label: "📄 توليد المراسلات والطلبات الإدارية (PDF)" },
-  { id: "service:promotion", label: "🧮 حساب وتدقيق نقط الترقية" },
-  { id: "service:suggestion", label: "📨 ملاحظة أو اقتراح للجامعة" },
+  { id: "service:hub", label: "🤝 الخدمات الرقمية (Hub)" },
+  { id: "service:documents", label: "📄 المراسلات الإدارية (PDF)" },
+  { id: "service:promotion", label: "🧮 حساب نقط الترقية" },
+  { id: "service:suggestion", label: "📨 ملاحظة أو اقتراح" },
 ];
 
 const TELEGRAM_SERVICE_PROMPTS: Record<string, string> = {
@@ -166,9 +166,9 @@ async function renderTelegramServiceMenu(token: string, chatId: number, conversa
     "🏛️ *المساعد الرقمي للجامعة الوطنية للتعليم FNE*",
     "مرحباً بك الرفيق/ة 👋",
     "",
-    "رهن إشارتكم لتسهيل الوصول للمعلومات والنصوص القانونية والتوجيهات النقابية.",
+    "رهن إشارتك لتسهيل وصولك للمعلومات، التوجيه النقابي والإداري.",
     "",
-    "💬 *اكتب سؤالك مباشرة* وسأجيبك فوراً!",
+    "💬 *اكتب سؤالك وسأجيبك فوراً!*",
     "",
     "📌 *أو اختر أحد الخدمات أدناه:*",
   ].join("\n");
