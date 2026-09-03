@@ -659,6 +659,22 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
       await renderTelegramDocumentMenu(token, chatId);
       return null;
     }
+    if (messageText === "service:promotion") {
+      const initPromo: PromotionCalcState = {
+        active: true,
+        step: 0,
+        data: {},
+      };
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { metadata: { ...metadata, [PROMO_CALC_META_KEY]: serializePromoCalcState(initPromo) } },
+      });
+      const firstQ = getPromoQuestion(initPromo);
+      await sendTelegramMessageWithKeyboard(token, chatId, firstQ, [
+        [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+      ]);
+      return null;
+    }
     if (messageText.startsWith("document:type:")) {
       const type = messageText.slice("document:type:".length) as RequestType;
       const config = REQUEST_TYPES[type];
@@ -813,23 +829,6 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
     }
 
     if (TELEGRAM_SERVICE_PROMPTS[messageText]) {
-      // For promotion, initiate the wizard instead of sending text
-      if (messageText === "service:promotion") {
-        const initPromo: PromotionCalcState = {
-          active: true,
-          step: 0,
-          data: {},
-        };
-        await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: { metadata: { ...metadata, [PROMO_CALC_META_KEY]: serializePromoCalcState(initPromo) } },
-        });
-        const firstQ = getPromoQuestion(initPromo);
-        await sendTelegramMessageWithKeyboard(token, chatId, firstQ, [
-          [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
-        ]);
-        return null;
-      }
       await sendTelegramScreen(token, chatId, TELEGRAM_SERVICE_PROMPTS[messageText]);
       return null;
     }
