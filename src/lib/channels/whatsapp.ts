@@ -1300,6 +1300,57 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
     }
     // ── End wizard block ─────────────────────────────────────────────────────
 
+    // ── Ticket description awaiting ─────────────────────────────────────────
+    // Intercept ticket content BEFORE it reaches the AI engine to prevent
+    // false matches (e.g. "تدبير الدعم التربوي" matching SNAP office).
+    if (metadata.awaitingTicketDescription === true) {
+      if (messageContent.trim() === "0") {
+        // Cancel ticket creation
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { metadata: { ...metadata, awaitingTicketDescription: false, menuShown: true, awaitingMenuChoice: true } },
+        });
+        await recordExchange(conversation.id, messageContent, "");
+        await sendText(jid, "✅ تم إلغاء التذكرة بنجاح.\n\nأرسل *0* للرجوع للقائمة الرئيسية.");
+        return;
+      }
+      // Create a real ticket with the user's description
+      try {
+        const ticket = await prisma.ticket.create({
+          data: {
+            title: `تذكرة من واتساب — ${customerName}`,
+            description: messageContent.trim(),
+            status: "open",
+            priority: "medium",
+            type: "support",
+            conversationId: conversation.id,
+          },
+        });
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { metadata: { ...metadata, awaitingTicketDescription: false, menuShown: true, awaitingMenuChoice: false } },
+        });
+        const ackMsg = `✅ تم فتح التذكرة بنجاح!
+
+🔢 رقم التذكرة: ${ticket.id}
+📝 الموضوع: ${messageContent.trim()}
+
+سيتم التواصل معك قريباً.
+
+أرسل *0* للرجوع للقائمة الرئيسية.`;
+        await recordExchange(conversation.id, messageContent, ackMsg);
+        await sendText(jid, ackMsg);
+        return;
+      } catch (tickErr) {
+        logger.warn("[WhatsApp] Failed to create ticket:", { error: String(tickErr) });
+      }
+      // Fall through to clear state even on error
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { metadata: { ...metadata, awaitingTicketDescription: false } },
+      });
+    }
+
     // ── Suggestion / رemark awaiting ────────────────────────────────────────
     if (metadata.awaitingSuggestion === true && messageContent.trim() !== "اقتراح" && messageContent.trim() !== "ملاحظة") {
       // Save the suggestion as a ticket in the dashboard
@@ -1720,6 +1771,16 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
 
     const aiResponse = await chat(conversation.id, messageContent);
     const cleanResponse = sanitizeWhatsAppMessage(aiResponse);
+
+    // If the AI asks for ticket description, set the awaitingTicketDescription state
+    // so the next message goes directly to ticket creation (not office matching).
+    if (/الرجاء وصف|وصف (?:مشكلتك|طلبك)|أرسل تفاصيل|ما هو طلبك/i.test(cleanResponse)) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { metadata: { ...metadata, awaitingTicketDescription: true } },
+      });
+    }
+
     const cleanVoiceQuestion = messageContent.replace(/^[«"'\s*]+|[»"'\s*]+$/g, "").trim();
     const voicePrefix = wasVoice && cleanVoiceQuestion ? `*${cleanVoiceQuestion}*\n\n` : "";
     const fullReply = `${voicePrefix}${cleanResponse}\n\n────────────────\n📋 للرجوع للقائمة الرئيسية أرسل *0*${WA_FEEDBACK_FOOTER}`;
