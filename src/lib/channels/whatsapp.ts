@@ -81,7 +81,7 @@ interface GlobalWhatsAppState {
   isStarting: boolean;
   isManuallyStopping: boolean;
   reconnectTimeout: NodeJS.Timeout | null;
-  /** Track conversations where logo has already been sent (to send only once per conversation) */
+  /** Track JIDs where logo has already been sent (persisted via Prisma conversation metadata) */
   logoSentTo: Set<string>;
 }
 
@@ -906,21 +906,40 @@ async function sendMenuText(jid: string, text: string): Promise<boolean> {
  * Send the menu text. If this is the FIRST time we send a menu to this jid,
  * the FNE logo (100px) is sent first as a separate image. Subsequent menu
  * displays in the same conversation send text only.
- * Falls back to plain-text menu if the logo file is missing or sharp fails.
+ * Logo-sent state is persisted in the conversation metadata so it survives
+ * Docker restarts.
  */
 async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> {
+  // Look up the conversation to check/save fneLogoSent in metadata
+  const conv = await prisma.conversation.findFirst({
+    where: {
+      channel: "whatsapp",
+      customerContact: jid,
+      status: { in: ["active", "escalated"] },
+    },
+    select: { id: true, metadata: true },
+  });
+
+  const meta = (conv?.metadata as Record<string, unknown>) || {};
+  const logoAlreadySent = Boolean(meta.fneLogoSent);
+
   if (!waState.sock) {
     await sendText(jid, caption);
     return false;
   }
 
-  const isFirstTime = !waState.logoSentTo.has(jid);
-
   // First time only: send the logo as a small standalone image
-  if (isFirstTime) {
+  if (!logoAlreadySent) {
     const sent = await sendLogoIcon(jid, FNE_LOGO_FIRST_SIZE);
     if (sent) {
+      // Persist flag in conversation metadata AND in-memory Set
       waState.logoSentTo.add(jid);
+      if (conv) {
+        await prisma.conversation.update({
+          where: { id: conv.id },
+          data: { metadata: { ...meta, fneLogoSent: true } },
+        }).catch(() => {/* non-fatal */ });
+      }
       // Small pause between logo and text
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
@@ -928,7 +947,7 @@ async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> 
 
   // Send menu text
   await sendMenuText(jid, caption);
-  logger.info(`[WhatsApp/Baileys] Menu sent to ${jid} (logo: ${isFirstTime ? "yes (first)" : "no (already sent)"})`);
+  logger.info(`[WhatsApp/Baileys] Menu sent to ${jid} (logo: ${logoAlreadySent ? "no (already sent)" : "yes (first)"})`);
   return true;
 }
 
@@ -1813,6 +1832,24 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
       waState.qrTimestamp = 0;
       waState.connectionStatus = "connected";
       waState.statusMessage = "Connected to WhatsApp. Agent is active!";
+
+      // Hydrate logoSentTo Set from conversation metadata so we don't
+      // re-send the logo after Docker restarts.
+      try {
+        const sentConvs = await prisma.conversation.findMany({
+          where: {
+            channel: "whatsapp",
+            metadata: { path: ["fneLogoSent"], equals: true },
+          },
+          select: { customerContact: true },
+        });
+        sentConvs.forEach((c) => {
+          if (c.customerContact) waState.logoSentTo.add(c.customerContact);
+        });
+        logger.info(`[WhatsApp/Baileys] Hydrated logoSentTo for ${sentConvs.length} conversations`);
+      } catch (err) {
+        logger.warn("[WhatsApp/Baileys] Failed to hydrate logoSentTo:", { error: String(err) });
+      }
       waState.isStarting = false;
       logger.info("[WhatsApp/Baileys] Connected successfully!");
 
