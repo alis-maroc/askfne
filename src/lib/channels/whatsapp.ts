@@ -831,68 +831,95 @@ async function sendText(jid: string, text: string): Promise<void> {
 import sharp from "sharp";
 
 const FNE_LOGO_PATH = path.join(process.cwd(), "public", "logo_fne.gif");
-const FNE_LOGO_MAX_WIDTH = 64; // pixels — icon-sized logo, inline with menu text (was 280)
+const FNE_LOGO_ICON_SIZE = 24; // pixels — small icon, slightly larger than emoji
 
 /**
- * Read the FNE logo, resize it to a small width, and send it with the menu text as caption.
- * Falls back to a plain-text menu if the logo file is missing, sharp fails, or send errors.
+ * Read the FNE logo, resize it to a small icon, and send it as a standalone message.
+ * Falls back to nothing if the logo file is missing or sharp fails.
+ */
+async function sendLogoIcon(jid: string): Promise<boolean> {
+  if (!waState.sock) return false;
+  try {
+    const raw = fs.readFileSync(FNE_LOGO_PATH);
+    const buffer = await sharp(raw)
+      .resize({ width: FNE_LOGO_ICON_SIZE, withoutEnlargement: true })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+    if (!buffer || buffer.length === 0) return false;
+
+    // Spacing guard
+    const now = Date.now();
+    const timeSinceLast = now - lastSendTimestamp;
+    if (timeSinceLast < MIN_GAP_BETWEEN_MESSAGES_MS) {
+      await new Promise((resolve) => setTimeout(resolve, MIN_GAP_BETWEEN_MESSAGES_MS - timeSinceLast));
+    }
+    lastSendTimestamp = Date.now();
+
+    await waState.sock!.sendPresenceUpdate("composing", jid).catch(() => { });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await waState.sock!.sendPresenceUpdate("paused", jid).catch(() => { });
+
+    const sendRes = await waState.sock!.sendMessage(jid, {
+      image: buffer,
+      mimetype: "image/jpeg",
+    });
+    logger.info(`[WhatsApp/Baileys] Logo icon (${buffer.length} bytes) sent to ${jid}`);
+    return true;
+  } catch (err) {
+    logger.warn("[WhatsApp/Baileys] sendLogoIcon error:", { error: String(err) });
+    return false;
+  }
+}
+
+/**
+ * Send the menu text as plain text message.
+ */
+async function sendMenuText(jid: string, text: string): Promise<boolean> {
+  if (!waState.sock) {
+    await sendText(jid, text);
+    return false;
+  }
+  // Simulate typing
+  await waState.sock.sendPresenceUpdate("composing", jid).catch(() => { });
+  const typingDuration = Math.min(2200, Math.max(800, text.length * 6));
+  await new Promise((resolve) => setTimeout(resolve, typingDuration));
+
+  // Spacing guard
+  const now = Date.now();
+  const timeSinceLast = now - lastSendTimestamp;
+  if (timeSinceLast < MIN_GAP_BETWEEN_MESSAGES_MS) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, MIN_GAP_BETWEEN_MESSAGES_MS - timeSinceLast)
+    );
+  }
+  lastSendTimestamp = Date.now();
+
+  await waState.sock.sendPresenceUpdate("paused", jid).catch(() => { });
+  await sendText(jid, text);
+  return true;
+}
+
+/**
+ * Read the FNE logo, resize it to a small icon (24px), and send it BEFORE the menu text.
+ * Logo appears as a small icon message, then menu text follows.
+ * Falls back to plain-text menu if the logo file is missing or sharp fails.
  */
 async function sendMenuWithLogo(jid: string, caption: string): Promise<boolean> {
   if (!waState.sock) {
     await sendText(jid, caption);
     return false;
   }
-  try {
-    let buffer: Buffer | null = null;
-    try {
-      const raw = fs.readFileSync(FNE_LOGO_PATH);
-      // Resize to icon-sized logo (preserves aspect ratio)
-      buffer = await sharp(raw)
-        .resize({ width: FNE_LOGO_MAX_WIDTH, withoutEnlargement: true })
-        .jpeg({ quality: 70 })
-        .toBuffer();
-    } catch (imgErr) {
-      logger.warn("[WhatsApp/Baileys] FNE logo unavailable, sending menu as plain text:", {
-        path: FNE_LOGO_PATH,
-        error: String(imgErr),
-      });
-      await sendText(jid, caption);
-      return false;
-    }
-    if (!buffer || buffer.length === 0) {
-      await sendText(jid, caption);
-      return false;
-    }
 
-    // Simulate typing
-    await waState.sock.sendPresenceUpdate("composing", jid).catch(() => { });
-    const typingDuration = Math.min(2200, Math.max(800, caption.length * 6));
-    await new Promise((resolve) => setTimeout(resolve, typingDuration));
+  // First: send logo icon (standalone, no caption)
+  await sendLogoIcon(jid);
 
-    // Spacing guard
-    const now = Date.now();
-    const timeSinceLast = now - lastSendTimestamp;
-    if (timeSinceLast < MIN_GAP_BETWEEN_MESSAGES_MS) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, MIN_GAP_BETWEEN_MESSAGES_MS - timeSinceLast)
-      );
-    }
-    lastSendTimestamp = Date.now();
+  // Small pause between logo and text
+  await new Promise((resolve) => setTimeout(resolve, 300));
 
-    await waState.sock.sendPresenceUpdate("paused", jid).catch(() => { });
-    const sendRes = await waState.sock.sendMessage(jid, {
-      image: buffer,
-      caption,
-      mimetype: "image/jpeg",
-    });
-    logger.info(`[WhatsApp/Baileys] Menu+logo (${buffer.length} bytes) sent to ${jid}, id: ${sendRes?.key?.id || "unknown"}`);
-    return true;
-  } catch (err) {
-    logger.error(`[WhatsApp/Baileys] sendMenuWithLogo error to ${jid}:`, { error: String(err) });
-    // Fallback to plain text menu
-    await sendText(jid, caption);
-    return false;
-  }
+  // Then: send menu text
+  await sendMenuText(jid, caption);
+  logger.info(`[WhatsApp/Baileys] Menu with logo icon sent to ${jid}`);
+  return true;
 }
 
 function extractMessageContent(msg: unknown): string {
