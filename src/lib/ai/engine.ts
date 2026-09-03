@@ -296,10 +296,15 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
   const normalizedTokens = tokens.map((token) => normalizeCitySkeleton(token)).filter((token) => token.length >= 2);
   if (normalizedTokens.length === 0) return null;
 
+  // Detect level intent from query (إقليمي, جهوي, محلي).
+  const wantsIqlimi = /إقليمي|الإقليمي|إقليم|الإقليم/i.test(query);
+  const wantsJihawi = /جهوي|الجهوي|جهة|الجهة/i.test(query);
+  const wantsMahali = /محلي|المحلي/i.test(query);
+
   // STEP 1 — Direct name match (highest priority).
   // If the query tokens match the canonical city in an office NAME (not just region/province),
-  // return that single office without going through region-based grouping.
-  // Example: "المكتب الإقليمي الرباط" → tokens match "الرباط" in the office name only,
+  // return that office without going through region-based grouping.
+  // Example: "المكتب الإقليمي الرباط" → matches "المكتب الإقليمي لـ الرباط" directly,
   // even though 12 other offices share the region "الرباط سلا القنيطرة".
   const stripPrefix = (name: string) =>
     name.replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|المحلي)\s*ل?ـ?\s*/, "").trim();
@@ -308,19 +313,18 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
     const nameWords = normalizeCitySkeleton(stripPrefix(office.name)).split(/\s+/).filter(Boolean);
     return normalizedTokens.every((token) => nameWords.some((word) => word === token));
   });
-  if (directNameMatches.length === 1) {
-    const only = directNameMatches[0];
-    if (only.level === "إقليمي" || only.level === "جهوي" || only.level === "محلي") {
-      return formatVerifiedOffice(only);
+  if (directNameMatches.length >= 1) {
+    // Prefer the office whose level matches the query intent.
+    let chosen: VerifiedOffice | undefined;
+    if (wantsIqlimi) chosen = directNameMatches.find((o) => o.level === "إقليمي");
+    else if (wantsJihawi) chosen = directNameMatches.find((o) => o.level === "جهوي");
+    else if (wantsMahali) chosen = directNameMatches.find((o) => o.level === "محلي");
+    if (!chosen) {
+      // No explicit level in query → prefer إقليمي (most common ask) over جهوي.
+      chosen = directNameMatches.find((o) => o.level === "إقليمي");
     }
-  }
-  if (directNameMatches.length > 1) {
-    // Multiple offices share the same canonical city in their name (rare).
-    // Prefer the regional/جهوي one if unique, otherwise fall through to grouping.
-    const regional = directNameMatches.filter((o) => o.level === "إقليمي" || o.level === "جهوي");
-    if (regional.length === 1) {
-      return formatVerifiedOffice(regional[0]);
-    }
+    if (!chosen) chosen = directNameMatches[0];
+    return formatVerifiedOffice(chosen);
   }
 
   // STEP 2 — Broad match (name + province + region + parent).
