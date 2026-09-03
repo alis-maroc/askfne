@@ -293,25 +293,38 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
   });
   if (offices.length === 0) return null;
 
+  // Identify which query tokens are ROLE/LEVEL words vs CITY words.
+  // ROLE words (مكتب, اقليم, جهوي, etc.) cannot be used as city-match keys because
+  // they would match every office that mentions that level in its name/region/parent.
+  // CITY words are everything else.
+  const ROLE_SKELETONS = new Set([
+    "مكتب", "كاتب", "اقليم", "جهه", "جهوي", "محلي", "وطني", "فرع", "هاتف", "رقم",
+    "مدير", "منسق", "مسؤول", "امين", "شباب", "اتحاد", "تعليم", "fne",
+    "الجامعه", "النقابيه", "النقابه", "تنظيم", "عضو",
+  ]);
+  const cityTokens = tokens.filter((token) => !ROLE_SKELETONS.has(normalizeCitySkeleton(token)));
+  const cityNormalized = cityTokens.map((t) => normalizeCitySkeleton(t)).filter((t) => t.length >= 2);
+  // normalizedTokens kept for STEP 2 backwards compatibility (includes role tokens).
   const normalizedTokens = tokens.map((token) => normalizeCitySkeleton(token)).filter((token) => token.length >= 2);
   if (normalizedTokens.length === 0) return null;
 
-  // Detect level intent from query (إقليمي, جهوي, محلي).
+  // Detect level intent from the original query (before tokenization stripped role words).
   const wantsIqlimi = /إقليمي|الإقليمي|إقليم|الإقليم/i.test(query);
   const wantsJihawi = /جهوي|الجهوي|جهة|الجهة/i.test(query);
   const wantsMahali = /محلي|المحلي/i.test(query);
 
   // STEP 1 — Direct name match (highest priority).
-  // If the query tokens match the canonical city in an office NAME (not just region/province),
-  // return that office without going through region-based grouping.
-  // Example: "المكتب الإقليمي الرباط" → matches "المكتب الإقليمي لـ الرباط" directly,
-  // even though 12 other offices share the region "الرباط سلا القنيطرة".
+  // Only CITY tokens are required to match the canonical city in an office NAME
+  // (not just region/province). This avoids false matches like "المكتب الاقليمي فاس"
+  // returning suggestions because role tokens were excluded.
+  // Example: "المكتب الإقليمي الرباط" → cityTokens=["رباط"] matches "المكتب الإقليمي لـ الرباط" directly.
   const stripPrefix = (name: string) =>
     name.replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|المحلي)\s*ل?ـ?\s*/, "").trim();
   const directNameMatches = offices.filter((office) => {
     if (!office.name || office.name === "—") return false;
     const nameWords = normalizeCitySkeleton(stripPrefix(office.name)).split(/\s+/).filter(Boolean);
-    return normalizedTokens.every((token) => nameWords.some((word) => word === token));
+    if (cityNormalized.length === 0) return false;
+    return cityNormalized.every((token) => nameWords.some((word) => word === token));
   });
   if (directNameMatches.length >= 1) {
     // Prefer the office whose level matches the query intent.
