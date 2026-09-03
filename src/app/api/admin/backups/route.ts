@@ -46,6 +46,28 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const url = new URL(request.url);
+    const downloadFilename = url.searchParams.get("download");
+
+    // Handle download request
+    if (downloadFilename) {
+      const filePath = path.join(backupDir, downloadFilename);
+      if (!fs.existsSync(filePath)) {
+        return NextResponse.json(
+          { error: "Backup file not found" },
+          { status: 404 }
+        );
+      }
+      const fileBuffer = fs.readFileSync(filePath);
+      return new NextResponse(fileBuffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/gzip",
+          "Content-Disposition": `attachment; filename="${downloadFilename}"`,
+        },
+      });
+    }
+
     const files = fs.readdirSync(backupDir)
       .filter((f) => f.endsWith(".tar.gz") && f.startsWith("owly-"))
       .map((f) => {
