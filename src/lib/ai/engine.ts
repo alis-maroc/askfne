@@ -284,147 +284,186 @@ function formatVerifiedOffice(office: VerifiedOffice): string {
   return lines.join("\n");
 }
 
+/**
+ * Strip office-type prefix from an office name to get the canonical city/region name.
+ * e.g. "المكتب الإقليمي لـ فاس" → "فاس"
+ * e.g. "المكتب الجهوي لـ فاس مكناس" → "فاس مكناس"
+ */
+function stripOfficePrefix(name: string): string {
+  return name
+    .replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الإقليمية|الجهوي|الجهوية|محلي|محلية|وطني|وطنية)\s*ل?ـ?\s*/i, "")
+    .replace(/^(?:مكتب|كاتب)\s+(?:إقليمي|جهوي|محلي|وطني)\s*ل?ـ?\s*/i, "")
+    .trim();
+}
+
+/**
+ * Check if a query city word matches a stripped office name.
+ * Matches as a whole word OR as a prefix of a word (handles compound names like "فاس" in "فاس مكناس").
+ */
+function cityWordMatches(strippedName: string, queryWord: string): boolean {
+  if (!queryWord || !strippedName) return false;
+  const parts = strippedName.split(/\s+/).filter(Boolean);
+  return parts.some((part) => part === queryWord || part.startsWith(queryWord));
+}
+
 async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzySuggestions: boolean): Promise<string | null> {
-  if (tokens.length === 0) return null;
-
-  const offices = await prisma.office.findMany({
-    where: { isActive: true },
-    orderBy: [{ sourceId: "asc" }],
-  });
-  if (offices.length === 0) return null;
-
-  // Detect level intent from the ORIGINAL query (works even when role tokens were stripped).
+  // STEP 0: Detect level intent from the ORIGINAL query.
   const wantsIqlimi = /إقليمي|الإقليمي|إقليم|الإقليم/i.test(query);
   const wantsJihawi = /جهوي|الجهوي|جهة|الجهة/i.test(query);
   const wantsMahali = /محلي|المحلي/i.test(query);
+  const wantsWatani = /وطني|الوطني/i.test(query);
 
-  // STEP 1 — Direct name match (highest priority).
-  // Use normalizeForMatch on the original query and office names, then check that
-  // every NON-ROLE word in the query appears in the office's canonical city name
-  // (after stripping the office-type prefix).
-  // This works for queries like "المكتب الاقليمي فاس" where "فاس" is the city
-  // and "مكتب"/"اقليم" are role words that should be ignored.
-  const ROLE_WORDS_NORM = new Set([
+  // STEP 1: Extract city/region tokens from the query (exclude role words).
+  const ROLE_WORDS = new Set([
     "مكتب", "الكتب", "كاتب", "الكاتب", "اقليم", "اقليمي", "الاقليم", "الاقليمي",
     "جهه", "جهوي", "الجهوي", "جهة", "الجهة", "محلي", "المحلي", "وطني", "الوطني",
     "فرع", "الفرع", "هاتف", "رقم", "مدير", "منسق", "مسؤول", "امين",
-    "شباب", "اتحاد", "تعليم", "fne", "الجامعه", "النقابيه", "النقابه",
-    "تنظيم", "عضو",
+    "شباب", "اتحاد", "تعليم", "fne", "الجامعه", "النقابيه", "النقابه", "تنظيم", "عضو",
   ]);
   const queryNorm = normalizeForMatch(query);
-  const queryCityWords = queryNorm.split(/\s+/).filter((w) => w.length >= 2 && !ROLE_WORDS_NORM.has(w));
-  // Also include bare tokens (from extractQueryTokens) so we don't miss words that
-  // normalizeForMatch removed (e.g. attached prepositions).
-  const ROLE_PREFIX_RE = /^(?:مكتب|كاتب|اقليم|جهوي|محلي|وطني|فرع)/i;
+  const queryCityWords = queryNorm.split(/\s+/).filter((w) => w.length >= 2 && !ROLE_WORDS.has(w));
+  // Raw tokens for ILIKE pre-filter
+  const rawTokens = tokens.filter((t) => t.length >= 2);
 
-  let directNameMatches: VerifiedOffice[] = offices.filter((office) => {
-    if (!office.name || office.name === "—") return false;
-    const nameNorm = normalizeForMatch(office.name);
-    const stripped = nameNorm.replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|المحلي|الوطني)\s*ل?ـ?\s*/, "").trim();
-    // All city words must appear in the stripped office name.
-    if (queryCityWords.length > 0 && !queryCityWords.every((qw) => stripped.includes(qw))) {
-      return false;
-    }
-    // Also check bare tokens (e.g. raw "فاس" stays "فاس" after normalizeForMatch).
-    const tokenWords = tokens.filter((t) => t.length >= 3 && !ROLE_PREFIX_RE.test(t) && !ROLE_WORDS_NORM.has(normalizeForMatch(t)));
-    if (tokenWords.length > 0 && !tokenWords.every((tw) => stripped.includes(normalizeForMatch(tw)))) {
-      return false;
-    }
-    return true;
+  if (queryCityWords.length === 0 && rawTokens.length === 0) return null;
+
+  // STEP 2: Pre-filter offices via Prisma ILIKE on name/region/province/parentOffice.
+  // This is the key fix: SQL-level ILIKE handles Arabic encoding correctly,
+  // and avoids the false positives of normalizeForMatch on short names like "فاس".
+  const orConditions = rawTokens.flatMap((term) => [
+    { name: { contains: term, mode: "insensitive" as const } },
+    { region: { contains: term, mode: "insensitive" as const } },
+    { province: { contains: term, mode: "insensitive" as const } },
+    { parentOffice: { contains: term, mode: "insensitive" as const } },
+  ]);
+
+  let offices = await prisma.office.findMany({
+    where: {
+      isActive: true,
+      ...(orConditions.length > 0 ? { OR: orConditions } : {}),
+    },
+    orderBy: [{ sourceId: "asc" }],
   });
 
-  if (directNameMatches.length >= 1) {
-    // Prefer the office whose level matches the query intent.
-    let chosen: VerifiedOffice | undefined;
-    if (wantsIqlimi) chosen = directNameMatches.find((o) => o.level === "إقليمي");
-    else if (wantsJihawi) chosen = directNameMatches.find((o) => o.level === "جهوي");
-    else if (wantsMahali) chosen = directNameMatches.find((o) => o.level === "محلي");
-    if (!chosen) chosen = directNameMatches.find((o) => o.level === "إقليمي");
-    if (!chosen) chosen = directNameMatches[0];
-    return formatVerifiedOffice(chosen);
+  // Fallback: if ILIKE returns nothing, load all offices.
+  if (offices.length === 0) {
+    offices = await prisma.office.findMany({
+      where: { isActive: true },
+      orderBy: [{ sourceId: "asc" }],
+    });
   }
 
-  // normalizedTokens kept for STEP 2 backwards compatibility (includes role tokens).
-  const normalizedTokens = tokens.map((token) => normalizeCitySkeleton(token)).filter((token) => token.length >= 2);
-  if (normalizedTokens.length === 0) return null;
+  if (offices.length === 0) return null;
 
-  // STEP 2 — Broad match (name + province + region + parent).
-  // Used for fuzzy / region-only queries like "سلا" or partial names.
-  const matches = offices.filter((office) => {
-    const searchable = [office.name, office.province, office.region, office.parentOffice]
-      .filter((value) => value && value !== "—")
-      .join(" ");
-    const words = normalizeCitySkeleton(searchable).split(/\s+/).filter(Boolean);
-    return normalizedTokens.every((token) => words.some((word) => word === token));
+  // STEP 3: Score and rank candidates by stripped-name match.
+  const scored = offices.map((office) => {
+    if (!office.name || office.name === "—") return { office, score: 0, stripped: "" };
+    const stripped = stripOfficePrefix(office.name);
+    let matchCount = 0;
+    for (const qw of queryCityWords) {
+      if (cityWordMatches(stripped, qw)) matchCount += 1;
+    }
+    // Boost if raw token literally appears in the office name (catches cases where
+    // normalizeForMatch collapsed the city word but ILIKE pre-filter passed it through).
+    let exactBoost = 0;
+    for (const rt of rawTokens) {
+      if (rt.length >= 2 && (office.name.includes(rt) || (office.region && office.region.includes(rt)) || (office.province && office.province.includes(rt)))) {
+        exactBoost += 5;
+      }
+    }
+    return { office, score: matchCount + exactBoost, stripped };
   });
 
-  const locations = new Map<string, VerifiedOffice[]>();
-  for (const office of matches) {
-    // Extract the canonical city name to group offices by location.
-    // "المكتب الإقليمي لـ تيزنيت" and office with province "تيزنيت" → SAME city
-    const cityFromName = office.name
-      .replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|المحلي)\s*ل?ـ?\s*/, "")
-      .trim();
-    let label: string;
-    if (office.province && office.province !== "—") {
-      label = office.province;
-    } else if (cityFromName && cityFromName !== office.name) {
-      // Regional office like "المكتب الإقليمي لـ تيزنيت" → use the city part
-      label = cityFromName;
-    } else {
-      label = office.name;
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    // Tiebreak: prefer level matching query intent.
+    if (wantsJihawi) return a.office.level === "جهوي" ? -1 : 1;
+    if (wantsIqlimi) return a.office.level === "إقليمي" ? -1 : 1;
+    if (wantsMahali) return a.office.level === "محلي" ? -1 : 1;
+    if (wantsWatani) return a.office.level === "وطني" ? -1 : 1;
+    // Default priority: وطني > جهوي > إقليمي > محلي
+    const levelPriority: Record<string, number> = { "وطني": 0, "جهوي": 1, "إقليمي": 2, "محلي": 3 };
+    return (levelPriority[a.office.level] ?? 9) - (levelPriority[b.office.level] ?? 9);
+  });
+
+  const top = scored[0];
+  if (top.score === 0) {
+    // No match. Try suggestions.
+    if (!allowFuzzySuggestions) return null;
+    return suggestOffices(offices, rawTokens);
+  }
+
+  // STEP 4: Resolve ties using level intent.
+  let chosen = top.office;
+  const topScore = top.score;
+  const sameScore = scored.filter((s) => s.score === topScore);
+  if (sameScore.length > 1) {
+    if (wantsJihawi) {
+      const match = sameScore.find((s) => s.office.level === "جهوي");
+      if (match) chosen = match.office;
+    } else if (wantsIqlimi) {
+      const match = sameScore.find((s) => s.office.level === "إقليمي");
+      if (match) chosen = match.office;
+    } else if (wantsMahali) {
+      const match = sameScore.find((s) => s.office.level === "محلي");
+      if (match) chosen = match.office;
+    } else if (wantsWatani) {
+      const match = sameScore.find((s) => s.office.level === "وطني");
+      if (match) chosen = match.office;
     }
+  }
+
+  return formatVerifiedOffice(chosen);
+}
+
+function suggestOffices(offices: VerifiedOffice[], rawTokens: string[]): string | null {
+  // Group by location (stripped name or province) and suggest the top results.
+  const locations = new Map<string, VerifiedOffice[]>();
+  for (const office of offices) {
+    const cityFromName = stripOfficePrefix(office.name);
+    const label = office.province && office.province !== "—" ? office.province : (cityFromName || office.name);
     const key = normalizeCitySkeleton(label);
     const group = locations.get(key) || [];
     group.push(office);
     locations.set(key, group);
   }
 
-  if (locations.size === 1) {
-    const group = [...locations.values()][0];
-    const wantsLocal = /محلي|فرع/i.test(query);
-    const office = wantsLocal
-      ? group.find((item) => item.level === "محلي")
-      : group.find((item) => item.level === "إقليمي") || group.find((item) => item.level === "جهوي") || group[0];
-    if (office) return formatVerifiedOffice(office);
-  }
-
-  if (locations.size > 1) {
+  if (locations.size > 0) {
     const suggestions = [...locations.values()]
       .slice(0, 5)
       .map((group) => {
         const o = group[0];
-        return o.province && o.province !== "—"
-          ? o.province
-          : o.name.replace(/^(?:المكتب|الكاتب)\s+(?:الإقليمي|الجهوي|【المحلي)\s*ل?ـ?\s*/, "").trim() || o.name;
+        return o.province && o.province !== "—" ? o.province : stripOfficePrefix(o.name) || o.name;
       });
     return `لم أستطع تحديد المكتب بدقة. هل تقصد أحد هذه الأقاليم؟\n${suggestions.map((name) => `• ${name}`).join("\n")}\n\nاكتب الاسم كاملاً أو اختر من قائمة المكاتب.`;
   }
 
-  if (!allowFuzzySuggestions) return null;
-
-  // A short location-like typo can be suggested, but never resolved automatically.
+  // Levenshtein suggestions as last resort.
   const candidates = new Map<string, string>();
   for (const office of offices) {
     const label = office.province && office.province !== "—" ? office.province : office.name;
     const key = normalizeCitySkeleton(label);
     candidates.set(key, label);
   }
+  const querySkeletons = rawTokens.map((t) => normalizeCitySkeleton(t)).filter((s) => s.length >= 2);
+  if (querySkeletons.length === 0) return null;
+
   const suggestions = [...candidates.entries()]
     .map(([skeleton, label]) => {
-      const score = Math.max(...normalizedTokens.map((token) => 1 - levenshtein(token, skeleton) / Math.max(token.length, skeleton.length)));
+      const score = Math.max(...querySkeletons.map((token) => 1 - levenshtein(token, skeleton) / Math.max(token.length, skeleton.length)));
       return { label, score };
     })
-    .filter((candidate) => candidate.score >= 0.6)
-    .sort((left, right) => right.score - left.score)
+    .filter((c) => c.score >= 0.6)
+    .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 
   if (suggestions.length > 0) {
-    return `لم أجد تطابقاً مؤكداً. هل تقصد:\n${suggestions.map((candidate) => `• ${candidate.label}`).join("\n")}\n\nلن أعرض أرقام المسؤولين قبل تأكيد الإقليم.`;
+    return `لم أجد تطابقاً مؤكداً. هل تقصد:\n${suggestions.map((c) => `• ${c.label}`).join("\n")}\n\nلن أعرض أرقام المسؤولين قبل تأكيد الإقليم.`;
   }
-
   return null;
 }
+
+
 
 function buildOfficeKnowledge(office: {
   name: string;
