@@ -90,6 +90,8 @@ describe("Security Utilities", () => {
         id: "default",
         businessName: "Owly",
         aiApiKey: "sk-test-key",
+        aiApiKeySecondary: "sk-test-secondary-key",
+        fallbackApiKey: "fb-test-key",
         smtpPass: "smtp-pass",
         imapPass: "imap-pass",
         twilioToken: "twilio-token",

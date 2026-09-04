@@ -19,6 +19,8 @@ export const fixtures = {
     aiProvider: "openai",
     aiModel: "gpt-4",
     aiApiKey: "sk-test-key-12345",
+    aiApiKeySecondary: "sk-test-secondary-12345",
+    fallbackApiKey: "fb-test-key-12345",
     maxTokens: 1000,
     temperature: 0.7,
     smtpHost: "smtp.test.com",

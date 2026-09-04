@@ -12,6 +12,9 @@ const { prismaMock, resolveCustomerMock, chatMock, createNewConversationMock } =
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    forumTopic: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
   },
   resolveCustomerMock: vi.fn(),
   chatMock: vi.fn(),

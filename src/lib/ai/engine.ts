@@ -360,8 +360,7 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
     "ما", "ماذا", "من", "هل", "هو", "هي", "كم", "كيف", "أين", "اين", "متى", "لماذا",
     "عن", "في", "على", "الى", "إلى", "مع", "بين", "حول", "كل", "بعض", "غير", "معظم",
     "شكون", "فين", "علاش", "كيفاش", "واش", "شنو", "ديال", "باش", "اللي", "الي",
-    "اريد", "أريد", "بغيت", "اعرف", "أعرف", "معرفة", "استفسار", "طلب", "شروط", "وثائق",
-    "سلام", "السلام", "مرحبا", "تحية",
+    "سلام", "السلام", "مرحبا", "تحية", "نضالية", "نضاليه", "عليكم", "ورحمة", "وبركاته", "صباح", "مساء", "الخير", "النور",
   ]);
   const queryNorm = normalizeForMatch(query);
   const queryCityWords = queryNorm.split(/\s+/).filter((w) => w.length >= 2 && !ROLE_AND_STOPWORDS.has(w));
@@ -640,6 +639,11 @@ async function findOfficeMatches(query: string): Promise<KnowledgeItem[]> {
 
 export async function buildOfficeDirectAnswer(query: string): Promise<string | null> {
   const normQ = normalizeForMatch(query);
+
+  // Pure greetings and pleasantries are NOT office-contact lookups
+  if (/^(سلام|السلام|مرحبا|تحية|صباح|مساء|السلام عليكم|تحية نضالية)/i.test(normQ.trim()) && !/مكتب|كاتب|اقليم|جهوي|محلي|فرع|وطني|هاتف|رقم|تواصل/i.test(normQ)) {
+    return null;
+  }
 
   // Descriptive bureau questions (missions, roles, formation, etc.) are NOT
   // office-contact lookups. They must not be answered by the office-lookup
@@ -2428,10 +2432,12 @@ export function buildAnthropicRequest(
     model: string;
     max_tokens: number;
     system?: string;
+    temperature?: number;
     messages: Array<{ role: "user" | "assistant"; content: string }>;
   } = {
     model: config.model,
     max_tokens: config.maxTokens,
+    ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
     ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
     messages: payloadMessages,
   };

@@ -175,7 +175,9 @@ export const updateSettingsSchema = z.object({
   whatsappMode: z.string().max(50).optional(),
   whatsappApiKey: z.string().max(4000).optional(),
   whatsappPhone: z.string().max(50).optional(),
-}).passthrough();
+  telegramBotToken: z.string().max(500).optional(),
+  adminTelegramChatId: z.string().max(200).optional(),
+}).strict();
 
 // Canned Responses
 export const createCannedResponseSchema = z.object({

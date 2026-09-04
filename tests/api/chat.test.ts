@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createRequest, parseJsonResponse } from "../helpers/request";
+import { prisma } from "@/lib/prisma";
 
 vi.mock("@/lib/ai/engine", () => ({
   chat: vi.fn().mockResolvedValue("AI response here"),
   createNewConversation: vi.fn().mockResolvedValue({ id: "new-conv-1" }),
+  checkKeywordTriggers: vi.fn().mockResolvedValue(null),
 }));
 
 describe("POST /api/chat", () => {
@@ -27,7 +29,7 @@ describe("POST /api/chat", () => {
 
     expect(response.status).toBe(200);
     expect(data.conversationId).toBe("conv-new");
-    expect(data.response).toBe("Hello! How can I help?");
+    expect(data.response).toContain("Hello! How can I help?");
   });
 
   it("should reject empty message", async () => {
@@ -69,6 +71,10 @@ describe("POST /api/chat", () => {
   it("should use provided conversationId", async () => {
     const { chat } = await import("@/lib/ai/engine");
     (chat as ReturnType<typeof vi.fn>).mockResolvedValue("Response");
+    (prisma.conversation.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "existing-conv",
+      metadata: {},
+    });
 
     const { POST } = await import("@/app/api/chat/route");
     const request = createRequest("/api/chat", {

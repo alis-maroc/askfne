@@ -48,6 +48,7 @@ describe("AI Tools", () => {
             description: "Cannot login",
             priority: "high",
             department: "Support",
+            confirmed: true,
           },
           "conv-1"
         )

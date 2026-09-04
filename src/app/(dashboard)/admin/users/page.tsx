@@ -50,6 +50,15 @@ interface AdminUser {
   createdAt: string;
 }
 
+interface UserFormData {
+  name: string;
+  username: string;
+  password: string;
+  role: string;
+  isActive: boolean;
+  permissions: ModulePermissions;
+}
+
 const ROLES = ["admin", "supervisor", "agent", "viewer"] as const;
 
 const mkPerm = (write: string[], read: string[]): ModulePermissions =>
@@ -122,7 +131,7 @@ export default function UsersManagementPage() {
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<UserFormData>({
     name: "", username: "", password: "", role: "agent",
     isActive: true, permissions: ROLE_DEFAULTS["agent"] as ModulePermissions,
   });
@@ -203,7 +212,7 @@ export default function UsersManagementPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Gestion des Utilisateurs" subtitle="Créez des comptes et définissez les accès par module" />
+      <Header title="Gestion des Utilisateurs" description="Créez des comptes et définissez les accès par module" />
       <div className="flex-1 overflow-auto p-6 space-y-6">
 
         {/* Stats */}
