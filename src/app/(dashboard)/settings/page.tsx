@@ -643,15 +643,17 @@ function AISection({
 
             <FormField
               label="Groq Model"
-              description="Recommended: llama-3.3-70b-versatile (high performance, free tier)."
+              description="Recommended: openai/gpt-oss-120b (high performance, excellent Arabic support)."
             >
               <SelectInput
-                value={data.externalAiModel || "llama-3.3-70b-versatile"}
+                value={data.externalAiModel || "openai/gpt-oss-120b"}
                 onChange={(v) => update("externalAiModel", v)}
                 options={[
-                  { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B Versatile (Recommended)" },
-                  { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 Distill Llama 70B" },
-                  { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant (Ultra-fast)" },
+                  { value: "openai/gpt-oss-120b", label: "OpenAI GPT-OSS 120B (Recommended, high quality)" },
+                  { value: "openai/gpt-oss-20b", label: "OpenAI GPT-OSS 20B (Fast)" },
+                  { value: "qwen/qwen3.8-27b", label: "Qwen 3.8 27B" },
+                  { value: "allam-2-7b", label: "Allam 2 7B (Arabic specialist)" },
+                  { value: "groq/compound", label: "Groq Compound" },
                 ]}
               />
             </FormField>
@@ -959,7 +961,7 @@ const defaultSettings: SettingsData = {
   whatsappPhone: "",
   externalAiEnabled: false,
   externalAiProvider: "groq",
-  externalAiModel: "llama-3.3-70b-versatile",
+  externalAiModel: "openai/gpt-oss-120b",
   externalAiApiKey: "",
   externalAiPrompt: "Tu es un assistant d'information pour les enseignants de l'éducation nationale au Maroc (وزارة التربية الوطنية والتعليم الأولي والرياضة).\n1. Cadre d'intervention : Réponds uniquement dans le cadre des lois, statuts et pratiques du ministère de l'Éducation nationale au Maroc.\n2. Questions pédagogiques : Fournis des réponses claires, structurées et bienveillantes en arabe ou en français selon la langue de la question.\n3. Questions administratives ou juridiques : Si tu n'es pas certain à 100% du texte de loi officiel marocain en vigueur, ne spécule jamais. Mentionne brièvement les principes généraux et termine par la formule de précaution.",
   externalAiAuditPolicy: "always",

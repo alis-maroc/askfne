@@ -1080,10 +1080,10 @@ function buildSystemPrompt(context: ConversationContext): string {
   const knowledgeSection =
     context.knowledgeBase.length > 0
       ? context.knowledgeBase
-        .slice(0, 8)
+        .slice(0, 5)
         .map(
           (k) =>
-            `[${k.category}] ${k.title}:\n${k.content.length > 2500 ? k.content.substring(0, 2500) + "..." : k.content}`
+            `[${k.category}] ${k.title}:\n${k.content.length > 1000 ? k.content.substring(0, 1000) + "..." : k.content}`
         )
         .join("\n\n---\n\n")
       : "No specific knowledge base entries available. Answer based on general knowledge about the business.";
@@ -1948,52 +1948,73 @@ export async function callExternalAiFallback(
     ? config.externalAiPrompt.trim()
     : DEFAULT_EXTERNAL_AI_PROMPT;
 
-  const model = config.externalAiModel || "llama-3.3-70b-versatile";
   const provider = config.externalAiProvider || "groq";
 
-  try {
-    let baseURL = "https://api.groq.com/openai/v1";
-    if (provider === "openai") baseURL = "https://api.openai.com/v1";
+  // Build resilient model candidates.
+  // Groq deprecated llama-3.3-70b-versatile in free tier; default to openai/gpt-oss-120b.
+  const preferredModel = (config.externalAiModel && config.externalAiModel !== "llama-3.3-70b-versatile")
+    ? config.externalAiModel
+    : "openai/gpt-oss-120b";
 
-    const client = new OpenAI({ apiKey, baseURL });
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: "system", content: systemPrompt },
-    ];
+  const candidateModels = provider === "groq"
+    ? Array.from(new Set([preferredModel, "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]))
+    : [preferredModel];
 
-    for (const h of history.slice(-4)) {
-      if (h.role === "customer" || h.role === "user") {
-        messages.push({ role: "user", content: h.content });
-      } else if (h.role === "assistant") {
-        messages.push({ role: "assistant", content: h.content });
+  let baseURL = "https://api.groq.com/openai/v1";
+  if (provider === "openai") baseURL = "https://api.openai.com/v1";
+
+  const client = new OpenAI({ apiKey, baseURL });
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt },
+  ];
+
+  for (const h of history.slice(-4)) {
+    if (h.role === "customer" || h.role === "user") {
+      messages.push({ role: "user", content: h.content });
+    } else if (h.role === "assistant") {
+      messages.push({ role: "assistant", content: h.content });
+    }
+  }
+  messages.push({ role: "user", content: userMessage });
+
+  let answer: string | undefined;
+
+  for (const model of candidateModels) {
+    try {
+      const completion = await client.chat.completions.create({
+        model,
+        messages,
+        temperature: 0.3,
+        max_tokens: 1000,
+      });
+
+      const text = completion.choices[0]?.message?.content?.trim();
+      if (text) {
+        answer = text;
+        logger.info(`[ExternalAI] Successfully generated answer using model ${model}`);
+        break;
       }
+    } catch (err: any) {
+      logger.warn(`[ExternalAI] Model ${model} failed (${err?.status || err?.message}), trying next candidate...`);
     }
-    messages.push({ role: "user", content: userMessage });
+  }
 
-    const completion = await client.chat.completions.create({
-      model,
-      messages,
-      temperature: 0.3,
-      max_tokens: 1000,
-    });
-
-    let answer = completion.choices[0]?.message?.content?.trim();
-    if (!answer) return null;
-
-    // Detect language: Arabic vs French/Other
-    const hasArabic = /[\u0600-\u06FF]/.test(userMessage);
-    const disclaimer = hasArabic
-      ? "\n\n> ⚠️ **تنبيه:** هذه المعطيات استرشادية، يُرجى مراجعة إدارتك أو التنسيق مع المسؤول الإقليمي للنقابة لتدقيق وضعيتك الإدارية."
-      : "\n\n> ⚠️ **Avertissement :** Ces données sont fournies à titre indicatif. Veuillez consulter votre administration ou vous coordonner avec le responsable provincial du syndicat pour vérifier votre situation administrative.";
-
-    if (!answer.includes("هذه المعطيات استرشادية") && !answer.includes("Ces données sont fournies à titre indicatif")) {
-      answer += disclaimer;
-    }
-
-    return answer;
-  } catch (err: any) {
-    logger.error("[ExternalAI] Failed to call external AI fallback:", err?.message || err);
+  if (!answer) {
+    logger.error("[ExternalAI] All candidate models failed to generate an answer");
     return null;
   }
+
+  // Detect language: Arabic vs French/Other
+  const hasArabic = /[\u0600-\u06FF]/.test(userMessage);
+  const disclaimer = hasArabic
+    ? "\n\n> ⚠️ **تنبيه:** هذه المعطيات استرشادية، يُرجى مراجعة إدارتك أو التنسيق مع المسؤول الإقليمي للنقابة لتدقيق وضعيتك الإدارية."
+    : "\n\n> ⚠️ **Avertissement :** Ces données sont fournies à titre indicatif. Veuillez consulter votre administration ou vous coordonner avec le responsable provincial du syndicat pour vérifier votre situation administrative.";
+
+  if (!answer.includes("هذه المعطيات استرشادية") && !answer.includes("Ces données sont fournies à titre indicatif")) {
+    answer += disclaimer;
+  }
+
+  return answer;
 }
 
 // ─── Keyword Triggers ────────────────────────────────────────────────────────
