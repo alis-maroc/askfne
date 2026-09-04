@@ -451,7 +451,7 @@ function AISection({
   update,
 }: {
   data: SettingsData;
-  update: (field: keyof SettingsData, value: string | number) => void;
+  update: (field: keyof SettingsData, value: string | number | boolean) => void;
 }) {
   const modelOptions: Record<string, { value: string; label: string }[]> = {
     openai: [
