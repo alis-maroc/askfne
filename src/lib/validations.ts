@@ -177,6 +177,12 @@ export const updateSettingsSchema = z.object({
   whatsappPhone: z.string().max(50).optional(),
   telegramBotToken: z.string().max(500).optional(),
   adminTelegramChatId: z.string().max(200).optional(),
+  externalAiEnabled: z.boolean().optional(),
+  externalAiProvider: z.string().max(50).optional(),
+  externalAiModel: z.string().max(100).optional(),
+  externalAiApiKey: z.string().max(2000).optional(),
+  externalAiPrompt: z.string().max(10000).optional(),
+  externalAiAuditPolicy: z.enum(["always", "negative_only", "never"]).optional(),
 }).strict();
 
 // Canned Responses

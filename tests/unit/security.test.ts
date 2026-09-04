@@ -97,6 +97,7 @@ describe("Security Utilities", () => {
         twilioToken: "twilio-token",
         elevenLabsKey: "el-key",
         whatsappApiKey: "wa-key",
+        externalAiApiKey: "groq-key-123",
       };
 
       const masked = maskSettingsSecrets(settings);

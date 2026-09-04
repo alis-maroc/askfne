@@ -53,6 +53,7 @@ export async function PUT(request: NextRequest) {
       "twilioToken",
       "elevenLabsKey",
       "whatsappApiKey",
+      "externalAiApiKey",
     ]) {
       if (body[field] === "***") delete body[field];
     }

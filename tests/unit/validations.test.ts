@@ -240,6 +240,25 @@ describe("Input Validation Schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("should accept valid external AI fallback settings", () => {
+      const result = validateBody(updateSettingsSchema, {
+        externalAiEnabled: true,
+        externalAiProvider: "groq",
+        externalAiModel: "llama-3.3-70b-versatile",
+        externalAiApiKey: "gsk_12345",
+        externalAiPrompt: "Custom prompt for Moroccan education",
+        externalAiAuditPolicy: "always",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid externalAiAuditPolicy", () => {
+      const result = validateBody(updateSettingsSchema, {
+        externalAiAuditPolicy: "invalid_policy",
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("createCustomerSchema", () => {

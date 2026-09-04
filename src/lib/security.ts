@@ -19,6 +19,7 @@ export const SECRET_FIELDS = [
   "elevenLabsKey",
   "whatsappApiKey",
   "fallbackApiKey",
+  "externalAiApiKey",
 ] as const;
 
 /**

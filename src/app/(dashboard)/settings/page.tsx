@@ -54,6 +54,12 @@ interface SettingsData {
   whatsappMode: string;
   whatsappApiKey: string;
   whatsappPhone: string;
+  externalAiEnabled: boolean;
+  externalAiProvider: string;
+  externalAiModel: string;
+  externalAiApiKey: string;
+  externalAiPrompt: string;
+  externalAiAuditPolicy: string;
 }
 
 type SectionKey =
@@ -86,7 +92,23 @@ const tabs: TabDef[] = [
 // Which fields belong to each section (used for partial saves)
 const sectionFields: Record<SectionKey, (keyof SettingsData)[]> = {
   general: ["businessName", "businessDesc", "welcomeMessage", "tone", "language"],
-  ai: ["aiProvider", "aiModel", "aiApiKey", "fallbackProvider", "fallbackModel", "fallbackApiKey", "maxTokens", "temperature"],
+  ai: [
+    "aiProvider",
+    "aiModel",
+    "aiApiKey",
+    "aiApiKeySecondary",
+    "fallbackProvider",
+    "fallbackModel",
+    "fallbackApiKey",
+    "externalAiEnabled",
+    "externalAiProvider",
+    "externalAiModel",
+    "externalAiApiKey",
+    "externalAiPrompt",
+    "externalAiAuditPolicy",
+    "maxTokens",
+    "temperature",
+  ],
   voice: ["elevenLabsKey", "elevenLabsVoice"],
   phone: ["twilioSid", "twilioToken", "twilioPhone"],
   email: [
@@ -576,6 +598,103 @@ function AISection({
           displayValue={data.temperature.toFixed(1)}
         />
       </FormField>
+
+      {/* --- External AI Fallback Section --- */}
+      <div className="pt-4 border-t border-owly-border">
+        <div className="flex items-center justify-between p-4 rounded-xl bg-owly-bg/50 border border-owly-border">
+          <div>
+            <h4 className="text-sm font-semibold text-owly-text flex items-center gap-2">
+              <Bot className="h-4 w-4 text-owly-primary" />
+              External AI Fallback (Moroccan Education Assistant)
+            </h4>
+            <p className="text-xs text-owly-text-light mt-0.5">
+              Automatically use Groq Cloud (Free Llama 3.3 70B) to answer questions when not found in the internal knowledge base.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => update("externalAiEnabled", !data.externalAiEnabled)}
+            className={cn(
+              "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+              data.externalAiEnabled ? "bg-owly-primary" : "bg-gray-300 dark:bg-gray-700"
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                data.externalAiEnabled ? "translate-x-6" : "translate-x-1"
+              )}
+            />
+          </button>
+        </div>
+
+        {data.externalAiEnabled && (
+          <div className="mt-4 p-4 rounded-xl bg-owly-surface border border-owly-border space-y-4">
+            <FormField
+              label="Groq API Key (Free)"
+              description="Get a free key instantly from console.groq.com. It is stored securely."
+            >
+              <PasswordInput
+                value={data.externalAiApiKey}
+                onChange={(v) => update("externalAiApiKey", v)}
+                placeholder="gsk_..."
+              />
+            </FormField>
+
+            <FormField
+              label="Groq Model"
+              description="Recommended: llama-3.3-70b-versatile (high performance, free tier)."
+            >
+              <SelectInput
+                value={data.externalAiModel || "llama-3.3-70b-versatile"}
+                onChange={(v) => update("externalAiModel", v)}
+                options={[
+                  { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B Versatile (Recommended)" },
+                  { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 Distill Llama 70B" },
+                  { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant (Ultra-fast)" },
+                ]}
+              />
+            </FormField>
+
+            <FormField
+              label="Audit & Ingestion Policy"
+              description="Choose how questions answered by the external AI are recorded."
+            >
+              <SelectInput
+                value={data.externalAiAuditPolicy || "always"}
+                onChange={(v) => update("externalAiAuditPolicy", v)}
+                options={[
+                  {
+                    value: "always",
+                    label: "Always record in Unanswered Questions (for review & 1-click article creation)",
+                  },
+                  {
+                    value: "negative_only",
+                    label: "Record only if user provides negative feedback (thumbs down)",
+                  },
+                  {
+                    value: "never",
+                    label: "Never record in Unanswered Questions (conversation logs only)",
+                  },
+                ]}
+              />
+            </FormField>
+
+            <FormField
+              label="System Prompt for External AI Fallback"
+              description="Editable system prompt guiding the external AI. The bilingual disclaimer is added automatically."
+            >
+              <textarea
+                value={data.externalAiPrompt}
+                onChange={(e) => update("externalAiPrompt", e.target.value)}
+                rows={5}
+                className="w-full px-3 py-2 text-xs font-mono border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary transition-theme"
+                placeholder="System instructions for external AI..."
+              />
+            </FormField>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -838,6 +957,12 @@ const defaultSettings: SettingsData = {
   whatsappMode: "web",
   whatsappApiKey: "",
   whatsappPhone: "",
+  externalAiEnabled: false,
+  externalAiProvider: "groq",
+  externalAiModel: "llama-3.3-70b-versatile",
+  externalAiApiKey: "",
+  externalAiPrompt: "Tu es un assistant d'information pour les enseignants de l'éducation nationale au Maroc (وزارة التربية الوطنية والتعليم الأولي والرياضة).\n1. Cadre d'intervention : Réponds uniquement dans le cadre des lois, statuts et pratiques du ministère de l'Éducation nationale au Maroc.\n2. Questions pédagogiques : Fournis des réponses claires, structurées et bienveillantes en arabe ou en français selon la langue de la question.\n3. Questions administratives ou juridiques : Si tu n'es pas certain à 100% du texte de loi officiel marocain en vigueur, ne spécule jamais. Mentionne brièvement les principes généraux et termine par la formule de précaution.",
+  externalAiAuditPolicy: "always",
 };
 
 export default function SettingsPage() {
@@ -871,7 +996,7 @@ export default function SettingsPage() {
       .finally(() => setLoading(false));
   }, [addToast]);
 
-  const update = (field: keyof SettingsData, value: string | number) => {
+  const update = (field: keyof SettingsData, value: string | number | boolean) => {
     setData((prev) => ({ ...prev, [field]: value }));
   };
 

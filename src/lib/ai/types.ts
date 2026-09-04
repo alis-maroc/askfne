@@ -37,6 +37,12 @@ export interface AIConfig {
   fallbackProvider?: string;
   fallbackModel?: string;
   fallbackApiKey?: string;
+  externalAiEnabled?: boolean;
+  externalAiProvider?: string;
+  externalAiModel?: string;
+  externalAiApiKey?: string;
+  externalAiPrompt?: string;
+  externalAiAuditPolicy?: string;
   maxTokens: number;
   temperature: number;
 }
