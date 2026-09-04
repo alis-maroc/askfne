@@ -11,7 +11,9 @@ import {
   Inbox,
   ArrowLeft,
   Tag,
+  AlertCircle,
 } from "lucide-react";
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   cn,
@@ -19,6 +21,7 @@ import {
   getChannelLabel,
   getStatusColor,
 } from "@/lib/utils";
+import { isLegitimateKnowledgeQuestion } from "@/lib/ai/refusal-detector";
 
 interface MessageData {
   id: string;
@@ -49,6 +52,7 @@ interface ConversationData {
   messages: MessageData[];
   _count: { messages: number };
   tags: TagData[];
+  metadata?: any;
   createdAt: string;
   updatedAt: string;
 }
@@ -207,6 +211,94 @@ export default function ConversationsPage() {
       }
     } catch (error) {
       console.error("Failed to update status:", error);
+    }
+  };
+
+  const [markingUnanswered, setMarkingUnanswered] = useState(false);
+  const [markingMessageId, setMarkingMessageId] = useState<string | null>(null);
+
+  const isMessageMarked = useCallback((msg: MessageData) => {
+    if (!selectedConversation?.metadata) return false;
+    const meta = selectedConversation.metadata;
+    const normText = (str: string) =>
+      str.toLowerCase().replace(/[\u064B-\u065F\u0670]/g, "").replace(/[^\p{L}\p{N}]/gu, "");
+    const msgKey = normText(msg.content);
+    if (!msgKey) return false;
+
+    if (Array.isArray(meta.unansweredQuestions)) {
+      return meta.unansweredQuestions.some((item: any) => {
+        if (item.messageId && item.messageId === msg.id) return true;
+        return normText(item.question || "") === msgKey;
+      });
+    }
+    if (meta.isManuallyUnanswered && meta.unansweredQuestion) {
+      return normText(String(meta.unansweredQuestion)) === msgKey;
+    }
+    return false;
+  }, [selectedConversation]);
+
+  const handleMarkSpecificMessage = async (questionText: string, messageId: string) => {
+    if (!selectedId || !questionText.trim()) return;
+    const preview = questionText.trim().length > 60 ? questionText.trim().slice(0, 60) + "..." : questionText.trim();
+    if (!confirm(`هل تريد تحويل هذا السؤال تحديداً إلى قسم "أسئلة بدون إجابة" لمتابعته؟\n\n« ${preview} »`)) return;
+
+    setMarkingMessageId(messageId);
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/mark-unanswered`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: questionText.trim(), messageId }),
+      });
+      if (res.ok) {
+        await fetchConversationDetail(selectedId);
+        fetchConversations();
+      } else {
+        const err = await res.json();
+        alert(err.error || "فشل التحويل");
+      }
+    } catch (error) {
+      console.error("Failed to mark message unanswered:", error);
+      alert("حدث خطأ أثناء العملية");
+    } finally {
+      setMarkingMessageId(null);
+    }
+  };
+
+  const handleMarkUnanswered = async () => {
+    if (!selectedId || !selectedConversation) return;
+    const legitMsg = selectedConversation.messages
+      .slice()
+      .reverse()
+      .find((m) => (m.role === "customer" || m.role === "user") && (isLegitimateKnowledgeQuestion(m.content) || (m.content && m.content.trim().length >= 3 && !/^[0-9]$/.test(m.content.trim()))));
+
+    if (!legitMsg) {
+      alert("لا يوجد سؤال حقيقي في هذه المحادثة (الرسائل المتوفرة مجرد أرقام أو أوامر تفاعلية).");
+      return;
+    }
+
+    const preview = legitMsg.content.trim().length > 60 ? legitMsg.content.trim().slice(0, 60) + "..." : legitMsg.content.trim();
+    if (!confirm(`هل تريد تحويل آخر سؤال: « ${preview} » إلى قسم 'أسئلة بدون إجابة' لمعالجته؟`)) return;
+
+    setMarkingUnanswered(true);
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/mark-unanswered`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: legitMsg.content.trim(), messageId: legitMsg.id }),
+      });
+      if (res.ok) {
+        alert("تم تحويل السؤال إلى قائمة الأسئلة غير المجاب عنها بنجاح.");
+        fetchConversationDetail(selectedId);
+        fetchConversations();
+      } else {
+        const err = await res.json();
+        alert(err.error || "فشل التحويل");
+      }
+    } catch (error) {
+      console.error("Failed to mark unanswered:", error);
+      alert("حدث خطأ أثناء العملية");
+    } finally {
+      setMarkingUnanswered(false);
     }
   };
 
@@ -505,7 +597,20 @@ export default function ConversationsPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
+                  {selectedConversation.messages.some(
+                    (m) => (m.role === "customer" || m.role === "user") && isLegitimateKnowledgeQuestion(m.content)
+                  ) && (
+                    <button
+                      onClick={handleMarkUnanswered}
+                      disabled={markingUnanswered}
+                      title="تحويل آخر سؤال حقيقي إلى قسم غير مجاب عنه"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 dark:text-amber-300 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>{markingUnanswered ? "جارِ التحويل..." : "آخر سؤال غير مجاب ❓"}</span>
+                    </button>
+                  )}
                   <select
                     value={selectedConversation.status}
                     onChange={(e) => handleStatusChange(e.target.value)}
@@ -582,7 +687,7 @@ export default function ConversationsPage() {
                               : "bg-owly-surface border border-owly-border text-owly-text rounded-bl-md"
                           )}
                         >
-                          <div className="flex items-center gap-2 mb-0.5">
+                          <div className="flex items-center justify-between gap-3 mb-1">
                             <span
                               className={cn(
                                 "text-xs font-medium",
@@ -597,6 +702,26 @@ export default function ConversationsPage() {
                                   : "Admin"
                                 : selectedConversation.customerName}
                             </span>
+                            {!isAdmin && (isLegitimateKnowledgeQuestion(msg.content) || (msg.content && msg.content.trim().length >= 3 && !/^[0-9]$/.test(msg.content.trim()))) && (
+                              <div>
+                                {isMessageMarked(msg) ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-800 px-2 py-0.5 rounded-md">
+                                    <AlertCircle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                                    <span>مدرج كغير مجاب عنه</span>
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleMarkSpecificMessage(msg.content, msg.id)}
+                                    disabled={markingMessageId === msg.id}
+                                    title="تحويل هذا السؤال بالتحديد إلى قسم الأسئلة بدون إجابة لمتابعته"
+                                    className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:text-amber-900 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-300 dark:border-amber-800 px-2 py-0.5 rounded-md transition-all shadow-xs disabled:opacity-50"
+                                  >
+                                    <AlertCircle className="w-3 h-3" />
+                                    <span>{markingMessageId === msg.id ? "جارِ التحويل..." : "غير مجاب عنها ❓"}</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <p className="text-sm whitespace-pre-wrap break-words">
                             {msg.content}

@@ -77,12 +77,37 @@ async function findByChannelField(channel: string, contact: string) {
       });
     case "whatsapp":
       return prisma.customer.findFirst({
-        where: { whatsapp: contact },
+        where: {
+          OR: [{ whatsapp: contact }, { phone: contact }],
+        },
       });
     case "phone":
       return prisma.customer.findFirst({
         where: { phone: contact },
       });
+    case "telegram": {
+      // Check customer metadata for telegram contact
+      const metaMatch = await prisma.customer.findFirst({
+        where: {
+          metadata: {
+            path: ["telegram"],
+            equals: contact,
+          },
+        },
+      });
+      if (metaMatch) return metaMatch;
+
+      // Fallback: match via previous telegram conversation linked to customer
+      const convMatch = await prisma.conversation.findFirst({
+        where: {
+          channel: "telegram",
+          customerContact: contact,
+          customerId: { not: null },
+        },
+        include: { customer: true },
+      });
+      return convMatch?.customer || null;
+    }
     default:
       return null;
   }
@@ -93,14 +118,20 @@ async function createCustomer(
   channel: string,
   contact: string
 ): Promise<string> {
+  const metadata: Record<string, unknown> = {};
+  if (channel === "telegram" && contact) {
+    metadata.telegram = contact;
+  }
+
   const customer = await prisma.customer.create({
     data: {
-      name: name || "Unknown",
+      name: name || (channel === "telegram" ? `تيليغرام - ${contact}` : "Unknown"),
       firstContact: new Date(),
       lastContact: new Date(),
       ...(channel === "email" ? { email: contact } : {}),
       ...(channel === "whatsapp" ? { whatsapp: contact } : {}),
       ...(channel === "phone" ? { phone: contact } : {}),
+      metadata: metadata as any,
     },
   });
 
@@ -118,24 +149,37 @@ async function updateExistingCustomer(
   contact: string,
   name: string
 ): Promise<void> {
-  const update: Record<string, unknown> = {
-    lastContact: new Date(),
-  };
-
-  // Backfill empty channel fields
   const customer = await prisma.customer.findUnique({
     where: { id: customerId },
-    select: { name: true, email: true, phone: true, whatsapp: true },
+    select: { name: true, email: true, phone: true, whatsapp: true, metadata: true },
   });
 
   if (!customer) return;
+
+  const update: Record<string, unknown> = {
+    lastContact: new Date(),
+  };
 
   if (channel === "email" && !customer.email) update.email = contact;
   if (channel === "whatsapp" && !customer.whatsapp) update.whatsapp = contact;
   if (channel === "phone" && !customer.phone) update.phone = contact;
 
-  // Update name if current is "Unknown" and we have a better one
-  if (customer.name === "Unknown" && name && name !== "Unknown") {
+  if (channel === "telegram" && contact) {
+    const meta = (customer.metadata as Record<string, unknown>) || {};
+    if (meta.telegram !== contact) {
+      update.metadata = { ...meta, telegram: contact };
+    }
+  }
+
+  // Update name if current is placeholder and we have a better one
+  if (
+    (!customer.name ||
+      customer.name === "Unknown" ||
+      customer.name.startsWith("واتساب - ") ||
+      customer.name.startsWith("تيليغرام - ")) &&
+    name &&
+    name !== "Unknown"
+  ) {
     update.name = name;
   }
 

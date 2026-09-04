@@ -59,6 +59,10 @@ describe("AI Engine", () => {
       ],
     });
 
+    // Default canned responses and automation rules (needed by the holding interceptor in chat())
+    mockPrisma.cannedResponse.findMany.mockResolvedValue([]);
+    mockPrisma.automationRule.findMany.mockResolvedValue([]);
+
     // Default message creation
     mockPrisma.message.create.mockResolvedValue({ id: "msg-new" });
     mockPrisma.conversation.update.mockResolvedValue({});

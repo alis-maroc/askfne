@@ -114,6 +114,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [blockedFilter, setBlockedFilter] = useState(false);
+  const [optInFilter, setOptInFilter] = useState<"all" | "bayan_sub" | "bayan_declined" | "forum_sub" | "not_asked">("all");
 
   // Detail panel
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerData | null>(
@@ -149,6 +150,30 @@ export default function CustomersPage() {
     "notes"
   );
 
+  // Opt-in invitation
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleInviteOptIn = async (customerId: string, customerName: string) => {
+    try {
+      setInvitingId(customerId);
+      const res = await fetch(`/api/customers/${customerId}/invite-optin`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToastMessage(`تم إرسال دعوة الاشتراك في المستجدات إلى الرفيق/ة ${customerName || ""} بنجاح!`);
+        setTimeout(() => setToastMessage(null), 5000);
+      } else {
+        alert(data.error || "تعذر إرسال الدعوة");
+      }
+    } catch {
+      alert("حدث خطأ أثناء إرسال الدعوة");
+    } finally {
+      setInvitingId(null);
+    }
+  };
+
   // ---------- Fetch ----------
 
   const fetchCustomers = useCallback(
@@ -160,6 +185,7 @@ export default function CustomersPage() {
         params.set("limit", "20");
         if (searchQuery.trim()) params.set("search", searchQuery.trim());
         if (blockedFilter) params.set("isBlocked", "true");
+        if (optInFilter !== "all") params.set("optIn", optInFilter);
 
         const res = await fetch(`/api/customers?${params.toString()}`);
         if (res.ok) {
@@ -173,7 +199,7 @@ export default function CustomersPage() {
         setLoading(false);
       }
     },
-    [searchQuery, blockedFilter]
+    [searchQuery, blockedFilter, optInFilter]
   );
 
   const fetchCustomerDetail = useCallback(async (id: string) => {
@@ -336,6 +362,45 @@ export default function CustomersPage() {
 
   // ---------- Render helpers ----------
 
+  const renderOptInBadges = (tagsStr: string) => {
+    const tags = tagsStr.split(",").map((t) => t.trim());
+    const isBayanSub = tags.includes("bayan_subscribers") || tags.includes("مشتركو البيانات والمستجدات");
+    const isBayanDeclined = tags.includes("bayan_opted_out") || tags.includes("رافضو خدمة البيانات");
+    const isForumSub =
+      tags.includes("forum_subscribers") ||
+      tags.includes("forum_subscriber") ||
+      tags.includes("forum-subscriber") ||
+      tags.includes("مشتركو منتدى النقاش") ||
+      tags.includes("مشترك في المنتدى") ||
+      tags.some((t) => t.includes("منتدى"));
+
+    return (
+      <div className="flex flex-col gap-1 items-start">
+        {isBayanSub ? (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-800" title="مشترك في بيانات ومستجدات FNE">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-600" />
+            مشترك بالبيانات
+          </span>
+        ) : isBayanDeclined ? (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800" title="اختار عدم التوصل بالبيانات">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+            رفض البيانات
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-gray-500 bg-gray-100" title="لم يتم تحديد رغبته بعد أو لم يُسأل بعد">
+            <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+            لم يُسأل بعد
+          </span>
+        )}
+        {isForumSub && (
+          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-purple-100 text-purple-700" title="مشترك في منتدى النقاش التفاعلي">
+            💬 منتدى النقاش
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const renderTags = (tagsStr: string) => {
     const tags = tagsStr
       .split(",")
@@ -361,6 +426,13 @@ export default function CustomersPage() {
 
   return (
     <>
+      {toastMessage && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-emerald-800 text-white px-5 py-2.5 rounded-full shadow-lg text-sm font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-top-4 border border-emerald-600">
+          <span>✅</span>
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       <Header
         title="Customers"
         description="Manage your customer profiles and history"
@@ -384,7 +456,7 @@ export default function CustomersPage() {
           )}
         >
           {/* Search & Filters */}
-          <div className="px-6 py-4 bg-owly-surface border-b border-owly-border">
+          <div className="px-6 py-3.5 bg-owly-surface border-b border-owly-border space-y-2.5">
             <div className="flex items-center gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-owly-text-light" />
@@ -399,14 +471,89 @@ export default function CustomersPage() {
               <button
                 onClick={() => setBlockedFilter(!blockedFilter)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors",
+                  "flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors cursor-pointer",
                   blockedFilter
-                    ? "bg-red-50 border-red-200 text-red-700"
+                    ? "bg-red-50 border-red-200 text-red-700 font-semibold"
                     : "border-owly-border text-owly-text-light hover:bg-owly-primary-50"
                 )}
               >
                 <ShieldAlert className="h-4 w-4" />
                 Blocked
+              </button>
+            </div>
+
+            {/* Opt-in Filter Pills */}
+            <div className="flex flex-wrap items-center gap-2 text-xs pt-1 border-t border-owly-border/40">
+              <span className="font-bold text-gray-700 flex items-center gap-1 ml-1">
+                <span>🎯 الاشتراكات (Opt-in):</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setOptInFilter("all")}
+                className={cn(
+                  "px-2.5 py-1 rounded-full font-medium transition-all cursor-pointer border text-[11.5px]",
+                  optInFilter === "all"
+                    ? "bg-gray-800 text-white border-gray-800 shadow-xs"
+                    : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                )}
+              >
+                الكل
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOptInFilter("bayan_sub")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-all cursor-pointer border text-[11.5px]",
+                  optInFilter === "bayan_sub"
+                    ? "bg-green-700 text-white border-green-700 shadow-xs font-bold"
+                    : "bg-green-50 text-green-800 border-green-200 hover:bg-green-100"
+                )}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", optInFilter === "bayan_sub" ? "bg-white" : "bg-green-600")} />
+                مشترك بالبيانات
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOptInFilter("bayan_declined")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-all cursor-pointer border text-[11.5px]",
+                  optInFilter === "bayan_declined"
+                    ? "bg-amber-700 text-white border-amber-700 shadow-xs font-bold"
+                    : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                )}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", optInFilter === "bayan_declined" ? "bg-white" : "bg-amber-600")} />
+                رفض البيانات
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOptInFilter("forum_sub")}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-medium transition-all cursor-pointer border text-[11.5px]",
+                  optInFilter === "forum_sub"
+                    ? "bg-purple-700 text-white border-purple-700 shadow-xs font-bold"
+                    : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                )}
+              >
+                💬 منتدى النقاش
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOptInFilter("not_asked")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-all cursor-pointer border text-[11.5px]",
+                  optInFilter === "not_asked"
+                    ? "bg-gray-700 text-white border-gray-700 shadow-xs font-bold"
+                    : "bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200"
+                )}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", optInFilter === "not_asked" ? "bg-white" : "bg-gray-400")} />
+                لم يُسأل بعد
               </button>
             </div>
           </div>
@@ -443,6 +590,9 @@ export default function CustomersPage() {
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-owly-text-light uppercase tracking-wider hidden lg:table-cell">
                       Phone
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-owly-text-light uppercase tracking-wider">
+                      الاشتراكات (Opt-in)
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-owly-text-light uppercase tracking-wider hidden xl:table-cell">
                       Tags
@@ -490,9 +640,31 @@ export default function CustomersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        <span className="text-sm text-owly-text-light">
-                          {customer.phone || "--"}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          {customer.whatsapp && (
+                            <span className="text-xs text-owly-text flex items-center gap-1 font-mono">
+                              <span className="text-[10px] px-1 py-0.2 rounded bg-green-100 text-green-800 font-sans font-bold">WA</span>
+                              {customer.whatsapp}
+                            </span>
+                          )}
+                          {customer.phone && customer.phone !== customer.whatsapp && (
+                            <span className="text-xs text-owly-text-light font-mono">
+                              {customer.phone}
+                            </span>
+                          )}
+                          {Boolean(customer.metadata?.telegram) && (
+                            <span className="text-xs text-blue-700 flex items-center gap-1 font-mono font-medium">
+                              <span className="text-[10px] px-1 py-0.2 rounded bg-blue-100 text-blue-800 font-sans font-bold">TG</span>
+                              {String(customer.metadata?.telegram)}
+                            </span>
+                          )}
+                          {!customer.whatsapp && !customer.phone && !customer.metadata?.telegram && (
+                            <span className="text-sm text-owly-text-light">--</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {renderOptInBadges(customer.tags || "")}
                       </td>
                       <td className="px-4 py-3 hidden xl:table-cell">
                         {renderTags(customer.tags || "") || (
@@ -524,16 +696,35 @@ export default function CustomersPage() {
                         )}
                       </td>
                       <td className="px-6 py-3 text-right">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteCustomer(customer.id);
-                          }}
-                          className="p-1.5 text-owly-text-light hover:text-owly-danger hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete customer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleInviteOptIn(customer.id, customer.name || "");
+                            }}
+                            disabled={invitingId === customer.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200 disabled:opacity-50"
+                            title="إرسال دعوة الاشتراك في المستجدات عبر واتساب"
+                          >
+                            {invitingId === customer.id ? (
+                              <span className="h-3 w-3 border-2 border-red-700 border-t-transparent animate-spin rounded-full" />
+                            ) : (
+                              <Send className="h-3 w-3" />
+                            )}
+                            دعوة
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCustomer(customer.id);
+                            }}
+                            className="p-1.5 text-owly-text-light hover:text-owly-danger hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete customer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -865,6 +1056,32 @@ export default function CustomersPage() {
                       </span>
                     )
                   )}
+                </div>
+
+                {/* Opt-In & Forum Management Card */}
+                <div className="px-4 py-3.5 border-b border-owly-border bg-gray-50/50 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      خدمة البيانات والمنتدى
+                    </span>
+                    {renderOptInBadges(selectedCustomer.tags || "")}
+                  </div>
+                  <p className="text-xs text-gray-500 leading-normal">
+                    يمكنك إرسال دعوة اشتراك تفاعلية لهذا الرفيق/ة لتصنيفه فوراً في قائمة المستجدات.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleInviteOptIn(selectedCustomer.id, selectedCustomer.name || "")}
+                    disabled={invitingId === selectedCustomer.id}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-red-700 hover:bg-red-800 rounded-lg shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {invitingId === selectedCustomer.id ? (
+                      <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent animate-spin rounded-full" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    إرسال دعوة الاشتراك في البيانات (Opt-in)
+                  </button>
                 </div>
 
                 {/* Tabs */}

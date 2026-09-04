@@ -135,16 +135,20 @@ export async function GET() {
   }
 }
 
-// POST: Batch import 100 articles from WordPress REST API
-export async function POST(req: Request) {
+export async function executeTaalimSync(options: {
+  page?: number;
+  perPage?: number;
+  categories?: number[];
+  categoryId?: string;
+} = {}) {
+  const {
+    page = 1,
+    perPage = 100,
+    categories = TARGET_WP_CATEGORIES,
+    categoryId: customCategoryId,
+  } = options;
+
   try {
-    const body = await req.json().catch(() => ({}));
-    const {
-      page = 1,
-      perPage = 100,
-      categories = TARGET_WP_CATEGORIES,
-      categoryId: customCategoryId,
-    } = body;
 
     // Ensure WpProcessedPost table exists
     await prisma.$executeRawUnsafe(`
@@ -198,14 +202,14 @@ export async function POST(req: Request) {
     if (!wpRes.ok) {
       if (wpRes.status === 400) {
         // WordPress returns 400 when page number exceeds total pages
-        return NextResponse.json({
+        return {
           success: true,
           message: "تم استيراد كافة الصفحات المتوفرة",
           page: pageNum,
           imported: 0,
           skipped: 0,
           hasMore: false,
-        });
+        };
       }
       throw new Error(`WordPress REST API error: ${wpRes.status} ${wpRes.statusText}`);
     }
@@ -215,14 +219,14 @@ export async function POST(req: Request) {
 
     const posts: any[] = await wpRes.json();
     if (!Array.isArray(posts) || posts.length === 0) {
-      return NextResponse.json({
+      return {
         success: true,
         page: pageNum,
         imported: 0,
         skipped: 0,
         hasMore: false,
         message: "لا توجد مقالات في هذه الصفحة",
-      });
+      };
     }
 
     // Load all already-processed IDs (both imported and user-deleted)
@@ -304,7 +308,7 @@ export async function POST(req: Request) {
     const hasMore = pageNum < totalPagesHeader;
     const nextPage = hasMore ? pageNum + 1 : null;
 
-    return NextResponse.json({
+    return {
       success: true,
       page: pageNum,
       totalPages: totalPagesHeader,
@@ -314,9 +318,20 @@ export async function POST(req: Request) {
       skipped: skippedCount,
       hasMore,
       nextPage,
-    });
+    };
   } catch (error: any) {
     console.error("[WordPress Batch Import Error]:", error);
+    throw error;
+  }
+}
+
+// POST: Batch import 100 articles from WordPress REST API via HTTP
+export async function POST(req: Request) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const result = await executeTaalimSync(body);
+    return NextResponse.json(result);
+  } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Failed to import batch" },
       { status: 500 }

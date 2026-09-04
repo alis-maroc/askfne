@@ -41,8 +41,9 @@ export function getStalenessReason(
     meta: FreshnessMetadata,
     now: Date = new Date()
 ): string | null {
-    // Historical status no longer triggers a user-facing warning.
-    // We only surface staleness when a real expiry date has passed.
+    if (meta.status === "historical") {
+        return "[Information historique — non confirmée pour la période en cours]";
+    }
     if (meta.validUntil && meta.validUntil < now) {
         return "[Information potentiellement obsolète — expirée]";
     }

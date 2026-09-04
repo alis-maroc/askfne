@@ -54,6 +54,15 @@ export function isAssistantRefusal(content: string | null | undefined): boolean 
   const trimmed = content.trim();
   if (trimmed.length < 5) return false;
 
+  // IMPORTANT: Welcome menus, standard feature listings, and interactive menus are NOT refusals!
+  if (
+    /القائمة الرئيسية|اختر من القائمة|اختر رقماً|أهلاً بك رفيقي|مرحباً بك في المنصة|الجامعة الوطنية للتعليم FNE|المكاتب والتنظيم النقابي|المقرر الوزاري|مقرر السنة الدراسية/i.test(
+      trimmed
+    )
+  ) {
+    return false;
+  }
+
   for (const pattern of ARABIC_REFUSAL_PATTERNS) {
     if (pattern.test(trimmed)) return true;
   }
@@ -63,6 +72,152 @@ export function isAssistantRefusal(content: string | null | undefined): boolean 
   }
 
   return false;
+}
+
+/**
+ * Filter words used to strip common pleasantries, greetings, and address terms
+ * to check if there is any substantive inquiry left.
+ */
+const GREETING_FILLER_WORDS = new Set([
+  "مرحبا",
+  "اهلا",
+  "اهلين",
+  "سلام",
+  "السلام",
+  "عليكم",
+  "ورحمة",
+  "الله",
+  "وبركاته",
+  "صباح",
+  "مساء",
+  "الخير",
+  "النور",
+  "اخي",
+  "اختي",
+  "رفيقي",
+  "رفيقتي",
+  "استاذ",
+  "استاذي",
+  "استاذه",
+  "سيدي",
+  "كريم",
+  "الكريمة",
+  "العزيز",
+  "العزيزة",
+  "شكرا",
+  "جزيلا",
+  "مشكور",
+  "بارك",
+  "فيك",
+  "يجازيك",
+  "يحفظك",
+  "يرحم",
+  "الوالدين",
+  "bonjour",
+  "bonsoir",
+  "salut",
+  "merci",
+  "coucou",
+  "salam",
+  "slm",
+  "cv",
+  "labas",
+  "ca",
+  "va",
+]);
+
+/**
+ * Determines whether a user message represents a legitimate, substantive knowledge question,
+ * filtering out greetings, pleasantries, navigation commands, digits, thanks, and technical noise.
+ */
+export function isLegitimateKnowledgeQuestion(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const raw = text.trim();
+  if (raw.length < 3) return false;
+
+  // Normalize for checks
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, "") // tashkeel
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (normalized.length < 3) return false;
+
+  // 1. Navigation digits & single word commands
+  if (/^(\d{1,3}|menu|قائمه|القائمه|رجوع|retour|annuler|الغاء|خروج|quitter)$/i.test(normalized)) {
+    return false;
+  }
+
+  // 2. Affirmation / Negation / Quick replies
+  if (/^(نعم|لا|oui|non|ok|d[' ]?accord|واخا|صافي|مزيان|سير|اييه|اجل|كلا)$/i.test(normalized)) {
+    return false;
+  }
+
+  // 3. Test inputs / gibberish / repetition
+  if (/^(test|تجربه|تست|testing|asdf|qwerty|[a-z]{1,4}|\d+)$/i.test(normalized)) {
+    return false;
+  }
+  if (/^(.)\1{3,}$/.test(normalized)) {
+    return false;
+  }
+
+  // 4. Developer tokens / API keys / URLs alone / emails / phone numbers
+  if (
+    /^(sk-[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{20,}|eyJ[a-zA-Z0-9_-]{20,})$/.test(raw) ||
+    /^https?:\/\/\S+$/i.test(raw) ||
+    /^\+?\d{9,15}$/.test(raw) ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)
+  ) {
+    return false;
+  }
+
+  // 5. Check if the message is purely composed of greetings and pleasantries
+  const rawWords = normalized.split(/\s+/).filter(Boolean);
+  const nonGreetingWords = rawWords.filter((w) => !GREETING_FILLER_WORDS.has(w));
+
+  // If after removing greetings/thanks nothing remains, it is a pure greeting or pleasantry
+  if (nonGreetingWords.length === 0) {
+    return false;
+  }
+
+  // 6. Substantive content check:
+  // Must have at least 2 substantive words, OR contain a known educational/union domain topic
+  if (nonGreetingWords.length < 2) {
+    const singleWordDomainKeywords = [
+      "ترقيه",
+      "تقاعد",
+      "حركه",
+      "مباراه",
+      "تعويضات",
+      "تعاقد",
+      "استيداع",
+      "رخصه",
+      "عطله",
+      "تفتيش",
+      "تنسيقيه",
+      "اضراب",
+      "تعويض",
+      "سكن",
+      "انتقال",
+      "منصب",
+      "شهاده",
+      "تأهيل",
+      "اقتطاع",
+    ];
+    const hasDomainKeyword = singleWordDomainKeywords.some((k) =>
+      normalized.includes(k)
+    );
+    if (!hasDomainKeyword) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -131,21 +286,25 @@ export function detectHallucination(
   }
 
   // 3. Check for overly specific "fake citation" patterns
-  // e.g. "كما ورد في المادة 15 من النظام الأساسي" when that article doesn't exist in KB
+  // Only penalize moderately — legal articles from general Moroccan law (Fonction Publique)
+  // should not single-handedly destroy an otherwise valid response.
   const articleCitations = normalizedResponse.match(/(?:المادة|الفصل|Matière|Article)\s+(\d+)/gi);
   if (articleCitations) {
     const kbText = knowledgeBase.map((k) => k.content).join(" ");
+    let articlePenalty = 0;
     for (const citation of articleCitations) {
       const num = citation.match(/\d+/)?.[0];
       if (num) {
         // Check if article exists in KB
         const articlePattern = new RegExp(`(المادة|الفصل|Article|Matière)\\s+${num}\\b`, "i");
         if (!articlePattern.test(kbText)) {
-          confidencePenalty += 0.35;
+          articlePenalty += 0.12;
           reasons.push(`FABRICATED_ARTICLE_REF: المادة ${num} غير موجودة في KB`);
         }
       }
     }
+    // Cap article citation penalty at 0.25 so legitimate answers citing law aren't destroyed
+    confidencePenalty += Math.min(articlePenalty, 0.25);
   }
 
   // 4. Check for phone numbers or specific names that don't appear in KB
@@ -206,6 +365,54 @@ export function detectHallucination(
           confidencePenalty += 0.6;
           reasons.push(`FABRICATED_HIJRI_CIRCULAR: تاريخ هجري + رقم مذكرة غير موجود في KB`);
         }
+      }
+    }
+  }
+
+  // 7. Check for unverified / fabricated URLs
+  // Any URL mentioned in the response MUST either:
+  // - Be in the strict whitelist of official FNE / MEN pages
+  // - OR be present in the retrieved KnowledgeBase chunks
+  const urlMatches = normalizedResponse.match(/https?:\/\/[^\s\)\*\]<>"]+/gi);
+  if (urlMatches) {
+    const ALLOWED_STATIC_URLS = new Set([
+      "https://taalim.org",
+      "https://www.taalim.org",
+      "https://hub.taalim.org",
+      "https://hub.taalim.org/responsables-fne.php",
+      "https://hub.taalim.org/adherer",
+      "https://hub.taalim.org/calc_promotion_points.php",
+      "https://hub.taalim.org/generate_request.php",
+      "https://hub.taalim.org/milaf",
+      "https://hub.taalim.org/participation_form.php",
+      "https://hub.taalim.org/carte_scolaire.php",
+      "https://t.me/askfne_bot",
+      "https://men.gov.ma",
+      "https://www.men.gov.ma",
+    ]);
+
+    const kbText = knowledgeBase.map((k) => `${k.title} ${k.content}`).join(" ");
+
+    for (const rawUrl of urlMatches) {
+      // Clean trailing punctuation
+      const cleanUrl = rawUrl.replace(/[.,;:!?'")*]+$/, "");
+      const cleanNorm = cleanUrl.toLowerCase().replace(/\/$/, "");
+
+      const isWhitelisted =
+        ALLOWED_STATIC_URLS.has(cleanNorm) ||
+        cleanNorm.startsWith("https://taalim.org/") ||
+        cleanNorm.startsWith("https://www.taalim.org/") ||
+        cleanNorm.startsWith("https://men.gov.ma/") ||
+        cleanNorm.startsWith("https://www.men.gov.ma/");
+
+      // Check if URL is explicitly cited in the retrieved KB documents
+      const existsInKB =
+        kbText.toLowerCase().includes(cleanNorm) ||
+        kbText.toLowerCase().includes(cleanUrl.toLowerCase());
+
+      if (!isWhitelisted && !existsInKB) {
+        confidencePenalty += 0.8;
+        reasons.push(`FABRICATED_URL: الرابط المولد (${cleanUrl}) غير موجود في قاعدة المعرفة ولا في القائمة المعتمدة`);
       }
     }
   }

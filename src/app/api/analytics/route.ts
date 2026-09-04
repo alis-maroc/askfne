@@ -19,7 +19,7 @@ function formatDateKey(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
-import { isAssistantRefusal } from "@/lib/ai/refusal-detector";
+import { isAssistantRefusal, isLegitimateKnowledgeQuestion } from "@/lib/ai/refusal-detector";
 
 function classifyQuestionCategory(text: string): string {
   const lower = text.toLowerCase();
@@ -271,8 +271,8 @@ export async function GET(request: NextRequest) {
       const msg = msgs[i];
       if (msg.role === "customer" || msg.role === "user") {
         const text = msg.content.trim();
-        // Ignore single-digit navigation choices or greetings
-        if (["0", "1", "2", "3", "4"].includes(text) || text.length < 3) continue;
+        // Ignore non-questions (greetings, pleasantries, single digits, etc.)
+        if (!isLegitimateKnowledgeQuestion(text)) continue;
 
         totalQuestionsCount++;
         const category = classifyQuestionCategory(text);

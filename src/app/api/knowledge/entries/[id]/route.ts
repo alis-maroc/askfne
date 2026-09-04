@@ -104,19 +104,14 @@ export async function DELETE(
       ).catch((e) => logger.warn("Failed to mark post as deleted in WpProcessedPost:", e));
     }
 
-    // If this entry was imported from men.gov.ma, mark it as 'deleted' in MenProcessedItem
-    // so that future syncs will NEVER re-import it!
+    // If this entry was imported from men.gov.ma, remove it from MenProcessedItem
+    // so that the user can re-fetch or re-import it cleanly whenever they want!
     const menItemId = typeof metadata?.menItemId === "string" ? metadata.menItemId : null;
     if (menItemId) {
-      const menUrl = typeof metadata?.url === "string" ? metadata.url : "";
       await prisma.$executeRawUnsafe(
-        `INSERT INTO "MenProcessedItem" ("id", "url", "title", "status", "updatedAt") 
-         VALUES ($1, $2, $3, 'deleted', NOW()) 
-         ON CONFLICT ("id") DO UPDATE SET "status" = 'deleted', "updatedAt" = NOW()`,
-        menItemId,
-        menUrl,
-        existing.title
-      ).catch((e) => logger.warn("Failed to mark post as deleted in MenProcessedItem:", e));
+        `DELETE FROM "MenProcessedItem" WHERE "id" = $1`,
+        menItemId
+      ).catch((e) => logger.warn("Failed to clear post in MenProcessedItem:", e));
     }
 
     await prisma.knowledgeEntry.delete({ where: { id } });

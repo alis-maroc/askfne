@@ -27,8 +27,8 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgresql://postgres:d5872d7f116195dfe94a09208cf9546cc41de96e7665e60a0c62fb6a492f6631@db:5432/owly?schema=public
-      NEXT_PUBLIC_APP_URL: https://ns516856.ip-158-69-24.net
-      APP_BASE_URL: https://ns516856.ip-158-69-24.net
+      NEXT_PUBLIC_APP_URL: https://askfne.taalim.org
+      APP_BASE_URL: https://askfne.taalim.org
       NODE_ENV: production
     env_file:
       - .env
@@ -44,6 +44,12 @@ services:
     volumes:
       - whatsapp_auth:/app/.wwebjs_auth
       - ./backups:/app/backups
+    extra_hosts:
+      - "www.men.gov.ma:196.200.143.135"
+      - "men.gov.ma:196.200.143.135"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     deploy:
       resources:
         limits:

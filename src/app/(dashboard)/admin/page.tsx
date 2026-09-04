@@ -73,7 +73,7 @@ function RoleBadge({ role }: { role: string }) {
 // ---------------------------------------------------------------------------
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  return new Date(dateStr).toLocaleDateString("fr-FR", {
     year: "numeric",
     month: "short",
     day: "numeric",

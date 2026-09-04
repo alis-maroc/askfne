@@ -54,7 +54,7 @@ export interface StateContext {
  * Build a fresh state context. Returns the IDLE state by default.
  */
 export function createIdleState(): StateContext {
-    return { state: CONVERSATION_STATE.IDLE, lastActivity: new Date() };
+    return { state: CONVERSATION_STATE.IDLE, lastActivity: new Date(), payload: {} };
 }
 
 /**

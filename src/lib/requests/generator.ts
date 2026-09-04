@@ -384,8 +384,8 @@ export async function generateAdminRequest(
 
   const appBase =
     process.env.APP_BASE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "https://ns516856.ip-158-69-24.net";
+    "https://askfne.taalim.org";
+
 
   const printUrl = `${appBase}/requests/print/${printToken}`;
 
@@ -414,7 +414,6 @@ export function buildDeliveryMessage(
       "",
       result.text,
       "",
-      divider,
       "📥 تم إرفاق وثيقة الـ PDF الرسمية جاهزة للتحميل والطباعة مباشرة أعلاه.",
       "أرسل *0* للرجوع للقائمة الرئيسية",
     ].join("\n");
@@ -423,11 +422,9 @@ export function buildDeliveryMessage(
   // WhatsApp
   return [
     `✅ *تم إعداد ${typeLabel} بنجاح!*`,
-    "━━━━━━━━━━━━━━━━━━━━",
     "",
     result.text,
     "",
-    divider,
     "📥 تم إرفاق وثيقة الـ PDF الرسمية جاهزة للتحميل والطباعة مباشرة أعلاه.",
     "أرسل *0* للرجوع للقائمة الرئيسية",
   ].join("\n");

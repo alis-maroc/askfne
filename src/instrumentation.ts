@@ -6,5 +6,9 @@ export async function register() {
     // Auto-start WhatsApp connection on server boot
     const { startWhatsAppInit } = await import("@/lib/channels/whatsapp");
     startWhatsAppInit(false);
+
+    // Auto-start 48-hour background sync scheduler for MEN and taalim.org
+    const { startAutoSyncScheduler } = await import("@/lib/services/auto-sync");
+    startAutoSyncScheduler();
   }
 }

@@ -8,9 +8,12 @@
  * Requirements: poppler-utils (pdftoppm), tesseract-ocr, tesseract-ocr-ara, tesseract-ocr-fra
  */
 
-import { execSync } from "node:child_process";
+import { exec, execSync } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
+const execAsync = promisify(exec);
 
 const OCR_TMP_PREFIX = "/tmp/ocr";
 const OCR_LANGS = "ara+fra"; // Arabic + French (MEN docs are bilingual)
@@ -33,28 +36,29 @@ export async function extractTextWithOcr(pdfPath: string): Promise<string> {
     const imagePrefix = `${imageDir}/page`;
 
     try {
-        // 1. Convert PDF pages to PNG images (one per page)
-        execSync(
-            `mkdir -p "${imageDir}" && /usr/bin/pdftoppm -r ${OCR_DPI} -png "${pdfPath}" "${imagePrefix}"`,
-            { timeout: 30_000, stdio: "pipe" }
+        // 1. Convert first 5 PDF pages to PNG images asynchronously (never block Node event loop / WhatsApp)
+        await execAsync(
+            `mkdir -p "${imageDir}" && /usr/bin/pdftoppm -f 1 -l 5 -r 150 -png "${pdfPath}" "${imagePrefix}"`,
+            { timeout: 35_000 }
         );
 
         // 2. List generated images
         const files = readdirSync(imageDir)
             .filter((f) => f.startsWith("page-") && f.endsWith(".png"))
-            .sort();
+            .sort()
+            .slice(0, 5);
 
         if (files.length === 0) return "";
 
-        // 3. Run Tesseract on each page
+        // 3. Run Tesseract on each page (psm 3 handles full pages with headers/stamps much better)
         const pageTexts: string[] = [];
         for (const file of files) {
             const imagePath = join(imageDir, file);
             const baseOut = join(imageDir, file.replace(".png", ""));
             try {
-                execSync(
-                    `/usr/bin/tesseract "${imagePath}" "${baseOut}" -l ${OCR_LANGS} --psm 6`,
-                    { timeout: OCR_TIMEOUT_MS, stdio: "pipe" }
+                await execAsync(
+                    `/usr/bin/tesseract "${imagePath}" "${baseOut}" -l ${OCR_LANGS} --psm 3`,
+                    { timeout: 30_000 }
                 );
                 const txtPath = `${baseOut}.txt`;
                 if (existsSync(txtPath)) {

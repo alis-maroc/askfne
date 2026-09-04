@@ -121,6 +121,10 @@ const INTENT_KEYWORDS: Array<{ intent: Intent; keywords: string[] }> = [
             "كيف يتم تأسيس", "كيف يتم تنظيم", "كيف يتم تشكيل", "كيف تتم دراسة",
             "كيف تتم المصادقة", "كيف تتم المصادقة على",
             "ما هي اليات", "ما هي اليات انتخاب", "الية عمل المكتب",
+            // Structure / organization of the union (routes to KB / Statuts FNE)
+            "هياكل الجامعة", "هياكل النقابة", "هياكل", "الهياكل", "هيكل الجامعة",
+            "هيكلة", "الهيكلة", "أجهزة الجامعة", "اجهزة الجامعة", "أجهزة النقابة", "اجهزة النقابة",
+            "الهيكل التنظيمي", "الهيكلة التنظيمية", "المؤتمر الوطني",
             // What is / meaning of union body
             "ما هو المكتب الوطني", "ما هو المكتب الجهوي", "ما هو المكتب الاقليمي",
             "ما هو المكتب المحلي", "ما هو المجلس الوطني", "ما هي الجامعة الوطنية",
@@ -128,8 +132,26 @@ const INTENT_KEYWORDS: Array<{ intent: Intent; keywords: string[] }> = [
         ],
     },
     {
-        // CONTACT_BUREAU must be checked BEFORE ORGANE_OFFICIEL so queries like
-        // "المكتب الإقليمي سيدي إفني" route to contact lookup, not roster refusal.
+        // ORGANE_OFFICIEL must be checked BEFORE CONTACT_BUREAU so roster/member queries
+        // like "من هي اعضاء المكتب الجهوي" route to roster checks, while national bodies
+        // (المجلس الوطني, المكتب التنفيذي) route to official organ handling.
+        intent: INTENT.ORGANE_OFFICIEL,
+        keywords: [
+            // Bodies of the union (national only — regional/local go to CONTACT_BUREAU)
+            "اللجنة الادارية", "اللجنة الإدارية", "المجلس الوطني", "المكتب الوطني",
+            "المكتب التنفيذي", "اللجنة التنفيذية",
+            // Members / composition queries — these require a verified official roster
+            "اعضاء اللجنة", "أعضاء اللجنة", "اعضاء المكتب", "أعضاء المكتب",
+            "اعضاء المجلس", "أعضاء المجلس", "تشكيلة المكتب", "تشكيلة المجلس",
+            "تركيبة المكتب", "تركيبة المجلس", "لائحة الاعضاء", "لائحة الأعضاء",
+            "اسماء الاعضاء", "أسماء الأعضاء", "تشكيلة", "تركيبة",
+            "من هي اعضاء", "من هم اعضاء", "من هي أعضاء", "من هم أعضاء",
+            "لجنة تنفيذية اعضاء", "اعضاء الهيكل",
+        ],
+    },
+    {
+        // CONTACT_BUREAU matches explicit contact info or regional/local bureaus.
+        // It does NOT contain national bodies.
         intent: INTENT.CONTACT_BUREAU,
         keywords: [
             "رقم المكتب", "رقم مكتب", "هاتف المكتب", "هاتف مكتب",
@@ -137,24 +159,10 @@ const INTENT_KEYWORDS: Array<{ intent: Intent; keywords: string[] }> = [
             "تواصل مع المكتب", "الاتصال بالمكتب", "الاتصال بمكتب",
             "امين المال", "الأمين", "الكاتب المحلي", "الكاتب الإقليمي", "الكاتب الجهوي",
             "المكتب الإقليمي", "المكتب الجهوي", "المكتب المحلي",
-            "المكتب الاقليمي", "المكتب الجهوي", "المكتب المحلي",
+            "المكتب الاقليمي",
             "امين المكتب", "سكرتير المكتب",
             "telephone bureau", "numero bureau", "numero du bureau",
             "contact bureau", "contacter le bureau",
-        ],
-    },
-    {
-        intent: INTENT.ORGANE_OFFICIEL,
-        keywords: [
-            // Bodies of the union (national only — regional/local go to CONTACT_BUREAU)
-            "اللجنة الادارية", "اللجنة الإدارية", "المجلس الوطني", "المكتب الوطني",
-            "الجامعة الوطنية للتعليم", "النقابة الوطنية للتعليم",
-            "المكتب التنفيذي",
-            // Members / composition queries — these require a verified roster
-            "اعضاء اللجنة", "أعضاء اللجنة", "اعضاء المكتب", "أعضاء المكتب",
-            "اعضاء المجلس", "أعضاء المجلس", "تشكيلة", "تركيبة",
-            "من هي اعضاء", "من هم اعضاء", "من هي أعضاء", "من هم أعضاء",
-            "لجنة تنفيذية", "هيكل الجامعة", "هياكل الجامعة",
         ],
     },
     {
@@ -181,6 +189,18 @@ export interface IntentClassification {
     confidence: number;
 }
 
+function normalizeRouterText(text: string): string {
+    return text
+        .toLowerCase()
+        .replace(/[إأآ]/g, "ا")
+        .replace(/ى/g, "ي")
+        .replace(/ة/g, "ه")
+        .replace(/[\u064b-\u065f\u0670]/g, "") // harakat
+        .replace(/[\u0640]/g, "") // tatweel
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 /**
  * Classify a normalized user message into a single intent.
  *
@@ -189,9 +209,11 @@ export interface IntentClassification {
  * trigger a clarification rather than guessing.
  */
 export function classifyIntent(normalizedText: string): IntentClassification {
+    const normText = normalizeRouterText(normalizedText);
     for (const { intent, keywords } of INTENT_KEYWORDS) {
         for (const keyword of keywords) {
-            if (normalizedText.includes(keyword)) {
+            const normKw = normalizeRouterText(keyword);
+            if (normText.includes(normKw)) {
                 return { intent, matched: true, confidence: 0.95 };
             }
         }
@@ -234,7 +256,7 @@ export function decideAnswer({
             kind: "refuse",
             intent,
             reason:
-                "Aucune liste officielle datée des membres n'est disponible. Aucune réponse ne peut être produite.",
+                "⚠️ لا تتوفر لائحة رسمية مؤرخة ومحينة بأسماء أعضاء هذا الجهاز حالياً (Aucune liste officielle datée des membres n'est disponible). لتفادي تقديم معطيات غير مؤكدة، يُرجى زيارة الموقع الرسمي للجامعة https://Taalim.org أو فتح تذكرة للتواصل مع المسؤول المختص.",
         };
     }
 

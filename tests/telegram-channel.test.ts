@@ -9,6 +9,7 @@ const { prismaMock, resolveCustomerMock, chatMock, createNewConversationMock } =
     settings: { findFirst: vi.fn() },
     conversation: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
   },
@@ -38,6 +39,8 @@ describe("Telegram webhook update handling", () => {
     vi.clearAllMocks();
     prismaMock.settings.findFirst.mockResolvedValue({ telegramBotToken: "TEST_TOKEN" });
     prismaMock.conversation.findFirst.mockResolvedValue(null);
+    // findUnique is called by renderTelegramServiceMenu to check fneLogoSent flag
+    prismaMock.conversation.findUnique = vi.fn().mockResolvedValue({ id: "conv-123", metadata: {} });
     prismaMock.conversation.update.mockResolvedValue({});
     resolveCustomerMock.mockResolvedValue("customer-123");
     createNewConversationMock.mockResolvedValue({ id: "conv-123", metadata: null } as any);
@@ -88,8 +91,9 @@ describe("Telegram webhook update handling", () => {
     const sendMessageCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/sendMessage"));
     expect(result).toBeNull();
     expect(sendMessageCalls.length).toBeGreaterThanOrEqual(1);
-    const body = JSON.parse(String(fetchMock.mock.calls.find(([url]) => String(url).includes("/sendMessage"))[1].body));
-    expect(body.text).toContain("اختر الخدمة");
+    const body = JSON.parse(String(fetchMock.mock.calls.find(([url]) => String(url).includes("/sendMessage"))![1].body));
+    // The menu text uses "اختر أحد الخدمات" (actual welcome message text)
+    expect(body.text).toContain("الخدمات");
     const buttons = body.reply_markup.inline_keyboard.flat();
     expect(buttons).toContainEqual(expect.objectContaining({ callback_data: "service:offices" }));
     expect(buttons).toContainEqual(expect.objectContaining({ callback_data: "service:promotion" }));
@@ -121,6 +125,7 @@ describe("Telegram webhook update handling", () => {
       data: expect.objectContaining({ metadata: expect.objectContaining({ telegramDocumentWizard: null }) }),
     }));
     const sendBody = JSON.parse(String((global.fetch as any).mock.calls.find(([url]: [string]) => url.includes("/sendMessage"))[1].body));
-    expect(sendBody.text).toContain("اختر الخدمة");
+    // The menu text uses "الخدمات" (actual welcome message text)
+    expect(sendBody.text).toContain("الخدمات");
   });
 });

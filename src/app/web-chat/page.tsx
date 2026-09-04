@@ -426,6 +426,7 @@ function WebChatContent() {
   ]);
   const [sending, setSending] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(true);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [error, setError] = useState("");
   const [newsArticles, setNewsArticles] = useState<Array<{ id: string; title: string; content?: string }>>([]);
@@ -472,6 +473,7 @@ function WebChatContent() {
     const trimmedMessage = nextMessage.trim();
     if (!trimmedMessage || sending) return;
 
+    setActiveCategory(null);
     setMessage("");
     setError("");
     setMessages((current) => [...current, { role: "customer", content: trimmedMessage }]);
@@ -639,35 +641,71 @@ function WebChatContent() {
 
               {/* Raccourcis permanents : catégories ou questions de la catégorie active en 2 colonnes centrées */}
               <div className="mb-2 sm:mb-2.5 w-full">
-                {!activeCategory ? (
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 max-h-[115px] sm:max-h-[140px] overflow-y-auto px-1 py-0.5 [scrollbar-width:thin] [scrollbar-color:#b51f2b_#f8edeb]">
-                    {visibleCategories.map((cat) => (
+                {!showShortcuts ? (
+                  <div className="flex items-center justify-center pb-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowShortcuts(true)}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#eddcd8] bg-[#fff8f7] px-3 py-1 text-[11px] font-medium text-[#a71928] shadow-2xs hover:bg-[#b51f2b] hover:text-white transition cursor-pointer"
+                    >
+                      💡 إظهار الاقتراحات والأسئلة الشائعة
+                    </button>
+                  </div>
+                ) : !activeCategory ? (
+                  <div>
+                    <div className="flex items-center justify-between pb-1 px-1">
+                      <span className="text-[11px] text-[#8b7771] font-medium">اختر موضوعاً أو اطرح سؤالك مباشرة:</span>
                       <button
-                        key={`chip-cat-${cat.id}`}
                         type="button"
-                        onClick={() => {
-                          setActiveCategory(cat.id);
-                        }}
-                        className={`inline-flex items-center justify-center text-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold shadow-xs transition cursor-pointer ${cat.id === "7"
-                          ? "border-[#b51f2b] bg-[#b51f2b] text-white hover:bg-[#941a25] shadow-sm"
-                          : "border-[#e7c7c5] bg-[#fff8f7] text-[#a71928] hover:bg-[#b51f2b] hover:text-white"
-                          }`}
+                        onClick={() => setShowShortcuts(false)}
+                        className="text-[11px] text-[#8b7771] hover:text-[#b51f2b] transition cursor-pointer"
+                        title="إخفاء الاقتراحات"
                       >
-                        {cat.label}
+                        إخفاء ✕
                       </button>
-                    ))}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 max-h-[115px] sm:max-h-[140px] overflow-y-auto px-1 py-0.5 [scrollbar-width:thin] [scrollbar-color:#b51f2b_#f8edeb]">
+                      {visibleCategories.map((cat) => (
+                        <button
+                          key={`chip-cat-${cat.id}`}
+                          type="button"
+                          onClick={() => {
+                            setActiveCategory(cat.id);
+                          }}
+                          className={`inline-flex items-center justify-center text-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold shadow-xs transition cursor-pointer ${cat.id === "7"
+                            ? "border-[#b51f2b] bg-[#b51f2b] text-white hover:bg-[#941a25] shadow-sm"
+                            : "border-[#e7c7c5] bg-[#fff8f7] text-[#a71928] hover:bg-[#b51f2b] hover:text-white"
+                            }`}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div className="flex flex-col w-full gap-2 max-h-[180px] sm:max-h-[240px] overflow-y-auto overscroll-contain px-0.5 py-0.5 [scrollbar-width:thin] [scrollbar-color:#b51f2b_#f8edeb]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveCategory(null);
-                      }}
-                      className="sticky top-0 z-10 w-full justify-center text-center inline-flex items-center gap-1.5 rounded-full bg-[#b51f2b] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#941a25] cursor-pointer"
-                    >
-                      🔙 القائمة الرئيسية ({MENU_CATEGORIES.find((c) => c.id === activeCategory)?.label})
-                    </button>
+                    <div className="sticky top-0 z-10 flex items-center justify-between gap-1.5 w-full bg-white/95 pb-0.5 backdrop-blur-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveCategory(null);
+                        }}
+                        className="flex-1 justify-center text-center inline-flex items-center gap-1.5 rounded-full bg-[#b51f2b] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#941a25] cursor-pointer"
+                      >
+                        🔙 القائمة الرئيسية ({MENU_CATEGORIES.find((c) => c.id === activeCategory)?.label})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveCategory(null);
+                        }}
+                        title="إغلاق قائمة الأسئلة"
+                        aria-label="إغلاق قائمة الأسئلة"
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-[#b51f2b] transition cursor-pointer text-xs font-bold shrink-0"
+                      >
+                        ✕
+                      </button>
+                    </div>
 
                     {/* Questions & Articles grid on 2 columns - Centered and Responsive */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 w-full">
@@ -679,7 +717,10 @@ function WebChatContent() {
                             <button
                               key={`chip-art-${art.id || idx}`}
                               type="button"
-                              onClick={() => void sendMessage(`ما هي تفاصيل بيان: ${titleClean}`)}
+                              onClick={() => {
+                                setActiveCategory(null);
+                                void sendMessage(`ما هي تفاصيل بيان: ${titleClean}`);
+                              }}
                               disabled={sending}
                               className={`flex items-center justify-start text-right gap-1.5 rounded-xl border p-2 sm:p-2.5 text-[10.5px] sm:text-xs font-semibold leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all hover:scale-[1.01] hover:border-[#b51f2b] hover:bg-[#fff2f0] hover:text-[#b51f2b] disabled:opacity-50 cursor-pointer ${isAlt
                                 ? "bg-[#fcf5f3] border-[#eddcd8] text-[#4f3d39]"
@@ -697,7 +738,10 @@ function WebChatContent() {
                             <button
                               key={`chip-q-${idx}`}
                               type="button"
-                              onClick={() => void sendMessage(activeCategory === "10" ? "10" : q)}
+                              onClick={() => {
+                                setActiveCategory(null);
+                                void sendMessage(activeCategory === "10" ? "10" : q);
+                              }}
                               disabled={sending}
                               className={`flex items-center justify-center text-center gap-1 sm:gap-1.5 rounded-xl border p-2 sm:p-2.5 text-[10.5px] sm:text-xs font-semibold leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all hover:scale-[1.01] hover:border-[#b51f2b] hover:bg-[#fff2f0] hover:text-[#b51f2b] disabled:opacity-50 cursor-pointer ${isAlt
                                 ? "bg-[#fcf5f3] border-[#eddcd8] text-[#4f3d39]"

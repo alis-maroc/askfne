@@ -30,26 +30,8 @@ export async function POST(req: Request) {
     // Check if the URL points directly to a PDF
     if (url.toLowerCase().includes(".pdf")) {
       try {
-        const pdfRes = await fetch(url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-          },
-        });
-        if (!pdfRes.ok) {
-          throw new Error(`Failed to download PDF: ${pdfRes.status}`);
-        }
-        const arrayBuf = await pdfRes.arrayBuffer();
-        const { PDFParse } = await import("pdf-parse");
-        const parser = new PDFParse({ data: Buffer.from(arrayBuf) });
-        const parsed = await parser.getText();
-        await parser.destroy();
-
-        const rawText = (parsed.text || "").trim();
-        const cleanText = rawText
-          .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
-          .replace(/[ \t]+/g, " ")
-          .replace(/\n{3,}/g, "\n\n")
-          .trim();
+        const { extractTextFromPdfUrl } = await import("@/lib/pdf-extractor");
+        const cleanText = await extractTextFromPdfUrl(url);
 
         try {
           const rawFilename = decodeURIComponent(url.split("/").pop() || "")
@@ -63,7 +45,7 @@ export async function POST(req: Request) {
           `📄 **وثيقة رسمية بصيغة PDF**`,
           `🔗 **رابط التحميل المباشر:** [تحميل وثيقة PDF](${url})`,
           "",
-          cleanText.length > 50
+          cleanText && cleanText.length > 40
             ? `### النص الكامل المستخرج من الوثيقة:\n\n${cleanText}`
             : "وثيقة بصيغة PDF متاحة للتحميل عبر الرابط أعلاه.",
         ].join("\n");
@@ -89,6 +71,30 @@ export async function POST(req: Request) {
       }
 
       markdownContent = await response.text();
+
+      // Detect any embedded or linked PDF files on the page (common in MEN and educational portals)
+      try {
+        const { extractPdfLinksFromContent, extractTextFromPdfUrl } = await import("@/lib/pdf-extractor");
+        const pdfLinks = extractPdfLinksFromContent(markdownContent, url);
+
+        if (pdfLinks.length > 0) {
+          const extractedPdfSections: string[] = [];
+          for (const pdfLink of pdfLinks.slice(0, 3)) {
+            const pdfText = await extractTextFromPdfUrl(pdfLink);
+            if (pdfText && pdfText.length > 40) {
+              const pdfName = decodeURIComponent(pdfLink.split("/").pop() || "الوثيقة المرفقة");
+              extractedPdfSections.push(
+                `### 📄 النص المستخرج من المرفق [${pdfName}](${pdfLink}):\n\n${pdfText}`
+              );
+            }
+          }
+          if (extractedPdfSections.length > 0) {
+            markdownContent = `${markdownContent}\n\n---\n\n${extractedPdfSections.join("\n\n---\n\n")}`;
+          }
+        }
+      } catch (embErr) {
+        console.warn("[Web Scrape] Embedded PDF extraction warning:", embErr);
+      }
     }
 
     if (!markdownContent || markdownContent.trim().length === 0) {

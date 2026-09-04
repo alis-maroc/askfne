@@ -13,22 +13,64 @@ export async function GET(request: NextRequest) {
     const { page, limit, skip, take } = parsePagination(searchParams);
     const search = searchParams.get("search");
     const isBlocked = searchParams.get("isBlocked");
+    const optIn = searchParams.get("optIn");
 
-    const where: Record<string, unknown> = {};
+    const conditions: Array<Record<string, unknown>> = [];
 
     if (search && search.trim()) {
-      where.OR = [
-        { name: { contains: search.trim(), mode: "insensitive" } },
-        { email: { contains: search.trim(), mode: "insensitive" } },
-        { phone: { contains: search.trim(), mode: "insensitive" } },
-      ];
+      conditions.push({
+        OR: [
+          { name: { contains: search.trim(), mode: "insensitive" } },
+          { email: { contains: search.trim(), mode: "insensitive" } },
+          { phone: { contains: search.trim(), mode: "insensitive" } },
+          { whatsapp: { contains: search.trim(), mode: "insensitive" } },
+        ],
+      });
     }
 
     if (isBlocked === "true") {
-      where.isBlocked = true;
+      conditions.push({ isBlocked: true });
     } else if (isBlocked === "false") {
-      where.isBlocked = false;
+      conditions.push({ isBlocked: false });
     }
+
+    if (optIn === "bayan_sub") {
+      conditions.push({
+        OR: [
+          { tags: { contains: "bayan_subscribers" } },
+          { tags: { contains: "مشتركو البيانات والمستجدات" } },
+        ],
+      });
+    } else if (optIn === "bayan_declined") {
+      conditions.push({
+        OR: [
+          { tags: { contains: "bayan_opted_out" } },
+          { tags: { contains: "رافضو خدمة البيانات" } },
+        ],
+      });
+    } else if (optIn === "forum_sub") {
+      conditions.push({
+        OR: [
+          { tags: { contains: "forum_subscribers" } },
+          { tags: { contains: "forum_subscriber" } },
+          { tags: { contains: "forum-subscriber" } },
+          { tags: { contains: "مشتركو منتدى النقاش" } },
+          { tags: { contains: "مشترك في المنتدى" } },
+          { tags: { contains: "منتدى" } },
+        ],
+      });
+    } else if (optIn === "not_asked") {
+      conditions.push({
+        AND: [
+          { NOT: { tags: { contains: "bayan_subscribers" } } },
+          { NOT: { tags: { contains: "مشتركو البيانات والمستجدات" } } },
+          { NOT: { tags: { contains: "bayan_opted_out" } } },
+          { NOT: { tags: { contains: "رافضو خدمة البيانات" } } },
+        ],
+      });
+    }
+
+    const where: Record<string, unknown> = conditions.length > 0 ? { AND: conditions } : {};
 
     const [customers, total] = await Promise.all([
       prisma.customer.findMany({

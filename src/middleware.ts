@@ -128,6 +128,7 @@ export function middleware(request: NextRequest) {
     "/poster",
     "/affiche",
     "/guide",
+    "/r",
   ];
   const isPublic = publicPaths.some((p) => pathname.startsWith(p));
 

@@ -20,7 +20,7 @@ import { INTENT, type Intent } from "./intent-router";
  * comparison. Do not call any other normalisation helper.
  */
 export function normalizeArabic(text: string): string {
-    return text
+    const normalized = text
         .toLowerCase()
         .replace(/[إأآٱ]/g, "ا")
         .replace(/ى/g, "ي")
@@ -33,6 +33,7 @@ export function normalizeArabic(text: string): string {
         .replace(/اآل/g, "ال")
         .replace(/\s+/g, " ")
         .trim();
+    return CITY_ALIASES[normalized] ?? normalized;
 }
 
 /**
@@ -55,8 +56,7 @@ const CITY_ALIASES: Record<string, string> = {
  * This function is NOT a fuzzy matcher — it never guesses.
  */
 export function applyCityAlias(text: string): string {
-    const normalized = normalizeArabic(text);
-    return CITY_ALIASES[normalized] ?? text;
+    return normalizeArabic(text);
 }
 
 /**

@@ -23,8 +23,11 @@ import {
   Download,
   Building,
   Sparkles,
+  ChevronDown,
+  Globe,
+  FileUp,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,17 +134,34 @@ export default function KnowledgeBasePage() {
 
   // MEN (Ministry) Import Modal
   const [showMenModal, setShowMenModal] = useState(false);
-  const [menMode, setMenMode] = useState<"auto" | "url">("auto");
+  const [menMode, setMenMode] = useState<"batch" | "auto" | "url">("batch");
+  const [menBatchPage, setMenBatchPage] = useState(1);
+  const [menBatchStats, setMenBatchStats] = useState<{
+    page: number;
+    imported: number;
+    skippedDeleted: number;
+    skippedExisting: number;
+    skippedIrrelevant: number;
+    totalFound: number;
+    hasMore: boolean;
+    nextPage: number;
+  } | null>(null);
   const [menUrl, setMenUrl] = useState("");
-  const [menLimit, setMenLimit] = useState(15);
+  const [menLimit, setMenLimit] = useState(20);
   const [syncingMen, setSyncingMen] = useState(false);
   const [menStats, setMenStats] = useState<{
     activeEntriesCount: number;
     importedCount: number;
     deletedCount: number;
+    suggestedNextPage?: number;
   } | null>(null);
   const [feedLimit, setFeedLimit] = useState(10);
   const [syncingFeed, setSyncingFeed] = useState(false);
+
+  // Dropdown for import actions & hidden file input
+  const [showImportDropdown, setShowImportDropdown] = useState(false);
+  const importDropdownRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Category modal
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -414,11 +434,29 @@ export default function KnowledgeBasePage() {
       fetch("/api/knowledge/sync-men")
         .then((r) => r.json())
         .then((data) => {
-          if (data) setMenStats(data);
+          if (data) {
+            setMenStats(data);
+            if (data.suggestedNextPage && menBatchStats === null) {
+              setMenBatchPage(data.suggestedNextPage);
+            }
+          }
         })
         .catch(() => {});
     }
-  }, [showMenModal]);
+  }, [showMenModal, menBatchStats]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        importDropdownRef.current &&
+        !importDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowImportDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function syncMen(e: React.FormEvent) {
     e.preventDefault();
@@ -434,15 +472,36 @@ export default function KnowledgeBasePage() {
           mode: menMode,
           url: menUrl,
           limit: menLimit,
+          page: menMode === "batch" ? menBatchPage : 1,
         }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to sync from men.gov.ma");
 
-      setImportSuccess(
-        `✅ مزامنة موقع الوزارة: تم استيراد ${result.imported} مستجد رسمي بنجاح (${result.skippedDeleted} مقال تم استبعاده لأنه محذوف مسبقاً، و ${result.skippedExisting} موجود بالفعل).`
-      );
-      setShowMenModal(false);
+      if (menMode === "batch") {
+        setMenBatchStats({
+          page: result.page || menBatchPage,
+          imported: result.imported ?? 0,
+          skippedDeleted: result.skippedDeleted ?? 0,
+          skippedExisting: result.skippedExisting ?? 0,
+          skippedIrrelevant: result.skippedIrrelevant ?? 0,
+          totalFound: result.totalFound ?? 0,
+          hasMore: result.hasMore ?? false,
+          nextPage: result.nextPage ?? (menBatchPage + 1),
+        });
+        if (result.nextPage) {
+          setMenBatchPage(result.nextPage);
+        }
+        setImportSuccess(
+          `✅ تم استيراد الدفعة ${result.page || menBatchPage}: ${result.imported} مستجد جديد بنجاح (${result.skippedExisting || 0} موجود مسبقاً، ${result.skippedIrrelevant || 0} تم استبعاده).`
+        );
+      } else {
+        setImportSuccess(
+          `✅ مزامنة موقع الوزارة: تم استيراد ${result.imported} مستجد رسمي بنجاح (${result.skippedDeleted || 0} محذوف مسبقاً، و ${result.skippedExisting || 0} موجود بالفعل).`
+        );
+        setShowMenModal(false);
+      }
+
       await fetchCategories();
       if (result.targetCategoryId) {
         setSelectedCategoryId(result.targetCategoryId);
@@ -736,54 +795,140 @@ export default function KnowledgeBasePage() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-owly-primary border border-owly-primary/30 hover:bg-owly-primary-50 rounded-lg cursor-pointer transition-colors">
-                    {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                    {importing ? "Import..." : "Importer fichier"}
-                    <input
-                      type="file"
-                      accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
-                      className="hidden"
-                      disabled={importing}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        if (file) void importFile(file);
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Smart Contextual Action Pill */}
+                  {selectedCategory.name.includes("وزارة التربية") ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowMenModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors shadow-2xs"
+                      title="سحب المذكرات والبلاغات الرسمية صفحة بصفحة"
+                    >
+                      <Building className="h-3.5 w-3.5 text-blue-600" />
+                      <span>سحب الدفعات (men.gov.ma)</span>
+                    </button>
+                  ) : selectedCategory.name.includes("الموقع الإلكتروني") ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalTab("batch");
+                        setShowUrlModal(true);
                       }}
-                    />
-                  </label>
-                  <button
-                    onClick={() => setShowUrlModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-owly-primary border border-owly-primary/30 hover:bg-owly-primary-50 rounded-lg transition-colors"
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    استيراد من taalim.org
-                  </button>
-                  <button
-                    onClick={() => setShowMenModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors"
-                    title="سحب المذكرات والبلاغات الرسمية من موقع وزارة التربية الوطنية men.gov.ma"
-                  >
-                    <Building className="h-3.5 w-3.5 text-blue-600" />
-                    سحب من men.gov.ma
-                  </button>
-                  <button
-                    onClick={() => {
-                      setModalTab("paste");
-                      setShowUrlModal(true);
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-lg transition-colors shadow-2xs"
+                      title="استيراد مقالات وبيانات الجامعة دفعة بدفعة"
+                    >
+                      <Globe className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>استيراد الدفعات (taalim.org)</span>
+                    </button>
+                  ) : null}
+
+                  {/* Unified Import & Sync Dropdown */}
+                  <div className="relative" ref={importDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowImportDropdown((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-owly-border hover:bg-gray-50 rounded-lg transition-colors shadow-2xs"
+                      title="خيارات الاستيراد والمزامنة"
+                    >
+                      {importing ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-owly-primary" />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5 text-gray-500" />
+                      )}
+                      <span>استيراد ومزامنة</span>
+                      <ChevronDown className="h-3 w-3 text-gray-400" />
+                    </button>
+
+                    {showImportDropdown && (
+                      <div className="absolute right-0 mt-1 w-64 bg-white rounded-xl shadow-xl border border-gray-200 py-1.5 z-40 text-xs divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-100">
+                        <div className="py-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowImportDropdown(false);
+                              setShowMenModal(true);
+                            }}
+                            className="w-full text-right px-3 py-2 hover:bg-blue-50/70 flex items-start gap-2.5 transition-colors text-gray-700 hover:text-blue-900"
+                          >
+                            <Building className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="font-semibold text-gray-900">سحب من men.gov.ma</div>
+                              <div className="text-[10px] text-gray-500">مذكرات وبلاغات الوزارة (أرشيف وصفحات)</div>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowImportDropdown(false);
+                              setModalTab("batch");
+                              setShowUrlModal(true);
+                            }}
+                            className="w-full text-right px-3 py-2 hover:bg-emerald-50/70 flex items-start gap-2.5 transition-colors text-gray-700 hover:text-emerald-900"
+                          >
+                            <Globe className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="font-semibold text-gray-900">استيراد من taalim.org</div>
+                              <div className="text-[10px] text-gray-500">مقالات وبيانات الجامعة (دفعات 100 مقال)</div>
+                            </div>
+                          </button>
+                        </div>
+                        <div className="py-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowImportDropdown(false);
+                              fileInputRef.current?.click();
+                            }}
+                            className="w-full text-right px-3 py-2 hover:bg-gray-50 flex items-start gap-2.5 transition-colors text-gray-700"
+                          >
+                            <FileUp className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="font-semibold text-gray-900">رفع ملف (PDF, Text, Markdown)</div>
+                              <div className="text-[10px] text-gray-500">استخراج وتحليل النصوص مباشرة</div>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowImportDropdown(false);
+                              setModalTab("paste");
+                              setShowUrlModal(true);
+                            }}
+                            className="w-full text-right px-3 py-2 hover:bg-emerald-50/70 flex items-start gap-2.5 transition-colors text-gray-700 hover:text-emerald-900"
+                          >
+                            <Sparkles className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="font-semibold text-gray-900">لصق نص (تنظيم بالـ AI)</div>
+                              <div className="text-[10px] text-gray-500">توليد العنوان والتنسيق الذكي</div>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hidden File Input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
+                    className="hidden"
+                    disabled={importing}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void importFile(file);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-lg transition-colors shadow-xs"
-                    title="لصق نص ليقوم الذكاء الاصطناعي باستخراج العنوان وتنظيمه وتصنيفه تلقائياً"
-                  >
-                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
-                    📝 لصق نص (تنظيم بالـ AI)
-                  </button>
+                  />
+
+                  {/* Primary Action Button */}
                   <button
+                    type="button"
                     onClick={() => openEntryModal()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg shadow-xs transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Add Entry
+                    <span>Add Entry</span>
                   </button>
                 </div>
                 {(importError || importSuccess) && (
@@ -1584,43 +1729,120 @@ export default function KnowledgeBasePage() {
                 </div>
               )}
 
-              {/* Mode Selector */}
-              <div>
-                <label className="block text-xs font-semibold text-owly-text mb-2">نوع السحب المطلوب:</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setMenMode("auto")}
-                    className={cn(
-                      "p-3 rounded-lg border text-right transition-all text-xs flex flex-col gap-1",
-                      menMode === "auto"
-                        ? "border-blue-600 bg-blue-50/60 font-semibold text-blue-900 ring-1 ring-blue-600"
-                        : "border-owly-border hover:bg-gray-50 text-owly-text-light"
-                    )}
-                  >
-                    <span>⚡ سحب تلقائي لأحدث المستجدات</span>
-                    <span className="text-[10px] text-gray-500 font-normal">البلاغات الصحفية والمذكرات الرسمية</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMenMode("url")}
-                    className={cn(
-                      "p-3 rounded-lg border text-right transition-all text-xs flex flex-col gap-1",
-                      menMode === "url"
-                        ? "border-blue-600 bg-blue-50/60 font-semibold text-blue-900 ring-1 ring-blue-600"
-                        : "border-owly-border hover:bg-gray-50 text-owly-text-light"
-                    )}
-                  >
-                    <span>🔗 استيراد رابط محدد</span>
-                    <span className="text-[10px] text-gray-500 font-normal">صفحة مقرر أو مذكرة خاصة من men.gov.ma</span>
-                  </button>
-                </div>
+              {/* Mode Selector Tabs */}
+              <div className="flex border-b border-owly-border bg-gray-50/80 -mx-6 -mt-4 px-6 pt-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMenMode("batch")}
+                  className={cn(
+                    "pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5",
+                    menMode === "batch"
+                      ? "border-blue-600 text-blue-700 bg-white rounded-t-lg shadow-2xs"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  <span>📦 دفعات وصفحات (الأرشيف)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMenMode("auto")}
+                  className={cn(
+                    "pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5",
+                    menMode === "auto"
+                      ? "border-blue-600 text-blue-700 bg-white rounded-t-lg shadow-2xs"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  <span>⚡ أحدث المستجدات فوراً</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMenMode("url")}
+                  className={cn(
+                    "pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5",
+                    menMode === "url"
+                      ? "border-blue-600 text-blue-700 bg-white rounded-t-lg shadow-2xs"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  <span>🔗 رابط مباشر</span>
+                </button>
               </div>
 
-              {menMode === "auto" ? (
+              {menMode === "batch" ? (
+                <div className="bg-gray-50 border border-owly-border rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-sm font-semibold text-owly-text block">
+                        رقم الدفعة / الصفحة في موقع الوزارة:
+                      </label>
+                      <span className="text-[11px] text-gray-500">
+                        (يجلب المذكرات والبلاغات السابقة صفحة بصفحة)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setMenBatchPage((p) => Math.max(1, p - 1))}
+                        className="p-1 rounded-md border border-gray-300 bg-white hover:bg-gray-100 text-gray-600"
+                        title="الصفحة السابقة"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={menBatchPage}
+                        onChange={(e) => setMenBatchPage(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-16 px-2 py-1 text-sm font-bold border border-owly-border rounded-lg text-center bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setMenBatchPage((p) => p + 1)}
+                        className="p-1 rounded-md border border-gray-300 bg-white hover:bg-gray-100 text-gray-600"
+                        title="الصفحة التالية"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-gray-600 bg-white p-3 rounded-lg border border-gray-200 space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-blue-700 font-semibold">
+                      <span>🛡️ حماية تامة وتصفية ذكية:</span>
+                    </div>
+                    <p className="text-gray-500 leading-relaxed">
+                      • يتجاهل تلقائياً أي مقال تم استيراده مسبقاً لتفادي التكرار.
+                    </p>
+                    <p className="text-gray-500 leading-relaxed">
+                      • <strong>إذا حذفت أي مقال، فلن يعاد استيراده أبداً</strong> حتى لو فحصت هذه الدفعة مجدداً.
+                    </p>
+                    <p className="text-gray-500 leading-relaxed">
+                      • يستبعد تلقائياً أنشطة التلاميذ والبطولات والبروتوكول ويركز على مذكرات وحركات ومسار الأساتذة.
+                    </p>
+                  </div>
+
+                  {menBatchStats && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 space-y-1">
+                      <p className="font-bold">📊 نتيجة الدفعة السابقة (صفحة {menBatchStats.page}):</p>
+                      <p>• تم استيراد <strong>{menBatchStats.imported}</strong> مذكرة/مستجد جديد بنجاح.</p>
+                      <p>• تم تجاوز <strong>{menBatchStats.skippedExisting}</strong> مستجد (موجود مسبقاً أو محذوف).</p>
+                      {menBatchStats.skippedIrrelevant > 0 && (
+                        <p>• تم استبعاد <strong>{menBatchStats.skippedIrrelevant}</strong> مادة غير مخصصة للأطر التعليمية.</p>
+                      )}
+                      {menBatchStats.hasMore && (
+                        <p className="text-emerald-700 font-semibold pt-1">
+                          ➡️ الدفعة التالية جاهزة (الدفعة {menBatchStats.nextPage}). اضغط الزر لمتابعة الاستيراد.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : menMode === "auto" ? (
                 <div>
                   <label className="block text-xs font-medium text-owly-text mb-1.5">
-                    الحد الأقصى للمقالات المراد فحصها وسحبها:
+                    الحد الأقصى للمقالات المراد فحصها وسحبها فوراً:
                   </label>
                   <select
                     value={menLimit}
@@ -1673,7 +1895,7 @@ export default function KnowledgeBasePage() {
                   disabled={syncingMen}
                   className="px-4 py-2 text-xs font-medium text-owly-text-light hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  إلغاء
+                  إغلاق
                 </button>
                 <button
                   type="submit"
@@ -1683,12 +1905,16 @@ export default function KnowledgeBasePage() {
                   {syncingMen ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      جاري الاتصال والسحب...
+                      جاري استيراد ومعالجة الدفعة {menMode === "batch" ? menBatchPage : ""}...
                     </>
                   ) : (
                     <>
                       <Download className="h-4 w-4" />
-                      بدء السحب الآن
+                      {menMode === "batch"
+                        ? (menBatchStats ? `متابعة استيراد الدفعة ${menBatchPage}` : `استيراد الدفعة ${menBatchPage} الآن`)
+                        : menMode === "auto"
+                        ? "بدء السحب التلقائي"
+                        : "استيراد الرابط المباشر"}
                     </>
                   )}
                 </button>

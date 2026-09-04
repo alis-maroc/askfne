@@ -46,6 +46,12 @@ import {
   serializePromoCalcState,
   type PromotionCalcState,
 } from "@/lib/requests/promotion-calc";
+import {
+  subscribeCustomerToForum,
+  unsubscribeCustomerFromForum,
+  getActiveForumTopic,
+  submitForumPost,
+} from "@/lib/forum/forum-service";
 
 const PROMO_CALC_META_KEY = "promoCalcState";
 
@@ -671,7 +677,14 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
       await exitHubMenu(conversation.id, metadata);
       await prisma.conversation.update({
         where: { id: conversation.id },
-        data: { metadata: { ...metadata, [TELEGRAM_DOCUMENT_META_KEY]: null } },
+        data: {
+          metadata: {
+            ...metadata,
+            inForumMode: false,
+            awaitingForumAnswer: false,
+            [TELEGRAM_DOCUMENT_META_KEY]: null,
+          },
+        },
       });
       await renderTelegramServiceMenu(token, chatId, conversation.id);
       return null;
@@ -811,7 +824,13 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
       if (article) {
         const { dateStr, body } = cleanArticleBodyForChat(article.content, article.title);
         const date = dateStr ? `\n📅 ${dateStr}` : "";
-        await sendTelegramScreen(token, chatId, `📌 *${article.title}*${date}\n\n${body}`);
+        const catMeta = metadata[TELEGRAM_CATEGORY_META_KEY] as { choice?: string; page?: number } | undefined;
+        const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+        if (catMeta?.choice) {
+          keyboard.push([{ text: "⬅️ العودة إلى قائمة المقالات", callback_data: `category:page:${catMeta.choice}:${catMeta.page || 1}` }]);
+        }
+        keyboard.push([{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }]);
+        await sendTelegramMessageWithKeyboard(token, chatId, `📌 *${article.title}*${date}\n\n${body}`, keyboard);
       }
       return null;
     }
@@ -864,6 +883,125 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
       return null;
     }
 
+    const normMsgTg = messageText.trim();
+
+    if (normMsgTg === "0" || normMsgTg === "رجوع") {
+      if (metadata.inForumMode === true) {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            metadata: {
+              ...metadata,
+              inForumMode: false,
+              awaitingForumAnswer: false,
+            },
+          },
+        });
+        const exitText = "🔙 *تم الخروج من منتدى النقاش والعودة إلى المساعد الآلي.* 🕊️\n\n💬 يمكنك الآن طرح أي سؤال وسأجيبك فوراً، أو اختر من القائمة أدناه:";
+        await sendTelegramMessageWithKeyboard(token, chatId, exitText, [
+          [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+        ]);
+        return null;
+      }
+    }
+
+    if (normMsgTg === "55") {
+      const effectiveCustId = conversation.customerId || customerId;
+      if (effectiveCustId) {
+        if (!conversation.customerId) {
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { customerId: effectiveCustId },
+          });
+        }
+        await subscribeCustomerToForum(effectiveCustId, String(chatId), conversation.id, {
+          ...metadata,
+          inForumMode: true,
+          awaitingForumAnswer: true,
+        });
+      }
+      const activeTopic = await getActiveForumTopic();
+      const topicDetails = activeTopic
+        ? [
+            `📌 *الموضوع الحالي المطروح للنقاش:*`,
+            `« *${activeTopic.title}* »`,
+            activeTopic.promptQuestion ? `\n${activeTopic.promptQuestion}\n` : "",
+            `✍️ *للمشاركة برأيك:* أرسل تعقيبك أو مقترحك هنا مباشرة وسيتم تسجيله لمراجعته وتعميمه.`,
+          ].filter(Boolean).join("\n")
+        : "💡 تم تسجيل دخولك، ولكن لا يوجد موضوع مفتوح للنقاش حالياً. سنخبرك فور إطلاق نقاش جديد!";
+
+      const forumOptInText = [
+        "✅ *أهلاً بك في منتدى النقاش التفاعلي FNE!* 🕊️",
+        "",
+        topicDetails,
+        "",
+        "────────────────────",
+        "🤖 *للخروج والعودة لطرح الأسئلة على المساعد الآلي:* أرسل الرقم *0* أو اضغط الزر أدناه.",
+        "⛔ *لإلغاء الاشتراك:* أرسل الرقم *99*.",
+      ].join("\n");
+      await sendTelegramMessageWithKeyboard(token, chatId, forumOptInText, [
+        [{ text: "🔙 الخروج والعودة للمساعد الآلي (0)", callback_data: "menu:main" }],
+      ]);
+      return null;
+    }
+
+    if (normMsgTg === "99") {
+      const effectiveCustId = conversation.customerId || customerId;
+      if (effectiveCustId) {
+        await unsubscribeCustomerFromForum(effectiveCustId, conversation.id, {
+          ...metadata,
+          inForumMode: false,
+          awaitingForumAnswer: false,
+        });
+      }
+      const forumOptOutText = [
+        "✅ *تم إلغاء اشتراكك في منتدى النقاش بنجاح.* ❌",
+        "",
+        "لن تصلك رسائل نقاشات المنتدى بعد الآن.",
+        "💡 _يمكنك إعادة الاشتراك في أي وقت بإرسال الرقم 55._",
+      ].join("\n");
+      await sendTelegramMessageWithKeyboard(token, chatId, forumOptOutText, [
+        [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+      ]);
+      return null;
+    }
+
+    // Capture forum post on Telegram
+    const activeForumTg = await getActiveForumTopic();
+    const isExplicitForumMsgTg =
+      messageText.includes("#منتدى") ||
+      messageText.includes("#نقاش") ||
+      metadata.inForumMode === true ||
+      metadata.awaitingForumAnswer === true;
+
+    if (activeForumTg && isExplicitForumMsgTg && messageText.length >= 2) {
+      const cleanContent = messageText.replace(/#منتدى|#نقاش/g, "").trim();
+      if (cleanContent.length >= 2) {
+        await submitForumPost({
+          topicId: activeForumTg.id,
+          customerId: conversation.customerId || undefined,
+          authorName: conversation.customerName || "أحد الأساتذة",
+          authorContact: String(chatId),
+          channel: "telegram",
+          content: cleanContent,
+        });
+        const ackText = [
+          "🤝 *شكراً لمشاركتك القيّمة في منتدى النقاش!*",
+          `📌 حول موضوع: *${activeForumTg.title}*`,
+          "",
+          "✅ تم استلام تعقيبك بنجاح وهو قيد المراجعة قبل نشره للزملاء. 💬",
+          "",
+          "✍️ يمكنك إرسال تعقيب إضافي، أو:",
+          "🤖 *للخروج والعودة لطرح الأسئلة على المساعد الآلي:* أرسل الرقم *0* أو اضغط الزر أدناه.",
+          "⛔ *لإلغاء الاشتراك:* أرسل الرقم *99*.",
+        ].join("\n");
+        await sendTelegramMessageWithKeyboard(token, chatId, ackText, [
+          [{ text: "🔙 الخروج والعودة للمساعد الآلي (0)", callback_data: "menu:main" }],
+        ]);
+        return null;
+      }
+    }
+
     const inHubMenu = isTelegramInHubMenu(metadata);
     if (inHubMenu) {
       const metaRecord = metadata as Record<string, unknown>;
@@ -898,7 +1036,9 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<stri
     }
 
     const aiResponse = await chat(conversation.id, messageText);
-    await sendTelegramMessage(token, chatId, aiResponse);
+    await sendTelegramMessageWithKeyboard(token, chatId, aiResponse, [
+      [{ text: "🏠 القائمة الرئيسية", callback_data: "menu:main" }],
+    ]);
     return aiResponse;
   } catch (error) {
     logger.error("[Telegram] Failed to process update:", error);
@@ -1040,28 +1180,27 @@ async function sendTelegramMessageWithKeyboard(
     // Always chunk to prevent "message is too long" errors
     const chunks = splitTelegramText(text || " ");
 
-    // Send first chunk with keyboard buttons
-    const first = await sendTelegramPayloadWithKeyboard(token, chatId, chunks[0], keyboard);
-    if (!first.ok) {
-      // If keyboard send fails (e.g. still too long after split), try plain fallback
-      logger.warn("[Telegram] Keyboard send failed, falling back to plain text:", {
-        description: first.description,
-      });
-      const plain = await sendTelegramPayload(token, chatId, chunks[0]);
-      if (!plain.ok) {
-        logger.error("[Telegram] Failed to send first chunk:", undefined, {
-          description: plain.description,
+    // If multiple chunks, send earlier chunks as plain messages, and attach keyboard to the LAST chunk!
+    for (let i = 0; i < chunks.length - 1; i++) {
+      const result = await sendTelegramPayload(token, chatId, chunks[i]);
+      if (!result.ok) {
+        logger.error(`[Telegram] Failed to send chunk ${i + 1}/${chunks.length}:`, undefined, {
+          description: result.description,
         });
         return false;
       }
     }
 
-    // Send remaining chunks as plain messages (no keyboard)
-    for (let i = 1; i < chunks.length; i++) {
-      const result = await sendTelegramPayload(token, chatId, chunks[i]);
-      if (!result.ok) {
-        logger.error(`[Telegram] Failed to send chunk ${i + 1}/${chunks.length}:`, undefined, {
-          description: result.description,
+    const lastChunk = chunks[chunks.length - 1];
+    const last = await sendTelegramPayloadWithKeyboard(token, chatId, lastChunk, keyboard);
+    if (!last.ok) {
+      logger.warn("[Telegram] Keyboard send failed on last chunk, falling back to plain text:", {
+        description: last.description,
+      });
+      const plain = await sendTelegramPayload(token, chatId, lastChunk);
+      if (!plain.ok) {
+        logger.error("[Telegram] Failed to send last chunk:", undefined, {
+          description: plain.description,
         });
         return false;
       }

@@ -98,18 +98,33 @@ const CATEGORY_ROUTING_RULES: Array<{ keywords: string[]; categories: string[] }
   },
   {
     // Legal status routing
-    keywords: ["القانون الاساسي", "القانون الأساسي", "statut", "statuts", "fne", "أهداف", "الاهداف", "objectifs"],
+    keywords: [
+      "القانون الاساسي", "القانون الأساسي", "النظام الداخلي", "statut", "statuts", "fne",
+      "أهداف", "الاهداف", "objectifs",
+      "هياكل", "الهياكل", "هيكل", "الهيكل", "هيكلة", "الهيكلة", "أجهزة", "الأجهزة", "اجهزة", "الاجهزة",
+      "المؤتمر الوطني", "المجلس الوطني", "اللجنة الإدارية", "اللجنة الادارية"
+    ],
     categories: ["Statuts FNE"],
   },
   {
+    // Administrative career procedures, movements, leaves, and exams (bivalent search across status, circulars, and union)
     keywords: [
       "النظام الأساسي للوظيفة العمومية", "النظام الاساسي للوظيفة العمومية", "الوظيفة العمومية", "وظيفة عمومية", "موظف", "موظفين",
+      "حركة انتقالية", "الحركة الانتقالية", "حركة الأساتذة", "حركة التبادل", "تبادل", "التبادل",
+      "استيداع", "الاستيداع", "إلحاق", "الالحاق", "الإلحاق", "تفرغ نقابي", "تفرغ",
+      "تقاعد", "التقاعد", "تقاعد نسبي", "التقاعد النسبي", "حد السن",
       "ترقية", "ترقي", "الترقية", "الترقي", "رتبة", "الرتبة", "درجة", "الدرجة", "سلم", "السلم", "تنقيط", "التنقيط",
-      "رخصة", "رخص", "الرخص", "الرخصة", "عقوبة", "عقوبات", "العقوبات", "تأديب", "تأديبي", "التأديبية",
-      "إلحاق", "الالحاق", "الإلحاق", "استيداع", "الاستيداع", "تقاعد", "التقاعد", "أجرة", "الأجرة", "تعويض", "تعويضات",
-      "fonction publique", "statut général de la fonction publique", "avancement", "grade", "echelon"
+      "امتحان مهني", "امتحانات مهنية", "كفاءة مهنية", "الكفاءة المهنية", "مباراة", "مباريات",
+      "رخصة", "رخص", "الرخص", "الرخصة", "رخصة مرض", "رخصة ولادة", "رخصة أداء مناسك الحج",
+      "عقوبة", "عقوبات", "العقوبات", "تأديب", "تأديبي", "التأديبية", "مجلس انضباطي",
+      "أجرة", "الأجرة", "تعويض", "تعويضات", "اقتطاع", "اقتطاعات",
+      "fonction publique", "statut général de la fonction publique", "avancement", "grade", "echelon", "mutation", "disponibilite", "detachement"
     ],
-    categories: ["النظام الأساسي للوظيفة العمومية"],
+    categories: [
+      "النظام الأساسي للوظيفة العمومية",
+      "مذكرات وبلاغات وزارة التربية الوطنية",
+      "الموقع الإلكتروني للجامعة",
+    ],
   },
   {
     // School-year decree and rentrée scolaire routing
@@ -265,9 +280,19 @@ function classifyQueryIntent(query: string): QueryIntent {
   if (/(موقف الجامعه|موقف الجامعة|الحراك|اضراب|إضراب|بيان|بلاغ|مستجدات|اصلاح|إصلاح)/i.test(normalized)) {
     return "union_position";
   }
-  // IMPORTANT: "فرع" is intentionally excluded — it produces false positives for
-  // queries like "فرعية" (sub-branch in a school) that are NOT about union offices.
-  if (/(مكتب|كاتب|هاتف|رقم|نمره|نمرة|تواصل|اتصال|مسؤول|امين المال|أمين المال|اقليمي|إقليمي|جهوي|محلي)/i.test(normalized)) {
+  // IMPORTANT: Contact intent requires an explicit office/union role or contact phrasing,
+  // NOT isolated words like "رقم" (which matches رقم التأجير/PPR), "محلي" (حركة محلية),
+  // "جهوي" (امتحان جهوي), or "مسؤول" (المسؤول الإداري).
+  const isExplicitOfficeRole =
+    /(?:المكتب|مكتب|الكاتب|كاتب|مقرات|مقر|فروع|فرع)\s+(?:الإقليمي|الاقليمي|الجهوي|المحلي|الوطني|التنفيذي|النقابة|النقابيه|النقابة|الجامعة|الجامعه)/i.test(normalized) ||
+    /(?:الكاتب|امين المال|أمين المال)\s+(?:العام|الإقليمي|الاقليمي|الجهوي|المحلي|الوطني)/i.test(normalized) ||
+    /(?:المكتب|مكتب)\s+(?:fne|التعليم|النقابي)/i.test(normalized);
+
+  const isExplicitContactLookup =
+    /(?:هاتف|نمره|نمرة|ارقام|أرقام|تواصل مع|اتصال بـ?|اتصل بـ?)\s+(?:المكتب|الكاتب|النقابة|الفرع|المسؤول النقابي|أمين المال|الجامعة)/i.test(normalized) ||
+    /(?:رقم|هاتف|نمرة)\s+(?:الكاتب|امين المال|أمين المال|المسؤول النقابي)/i.test(normalized);
+
+  if (isExplicitOfficeRole || isExplicitContactLookup) {
     return "office_contact";
   }
   return "knowledge";
@@ -303,7 +328,14 @@ function stripOfficePrefix(name: string): string {
 function cityWordMatches(strippedName: string, queryWord: string): boolean {
   if (!queryWord || !strippedName) return false;
   const parts = strippedName.split(/\s+/).filter(Boolean);
-  return parts.some((part) => part === queryWord || part.startsWith(queryWord));
+  const normQuery = normalizeForMatch(queryWord);
+  return parts.some((part) => {
+    const normPart = normalizeForMatch(part);
+    if (part === queryWord || normPart === normQuery || normPart === queryWord) return true;
+    // Prefix matching requires at least 3 characters to avoid 2-letter false positives like "ما" -> "ماسة"
+    if (normQuery.length >= 3 && (normPart.startsWith(normQuery) || part.startsWith(queryWord))) return true;
+    return false;
+  });
 }
 
 async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzySuggestions: boolean): Promise<string | null> {
@@ -318,45 +350,63 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
   const wantsMahali = /(ال)?محلي/i.test(normQ) || /(ال)?محلي/i.test(query);
   const wantsWatani = /(ال)?وطني/i.test(normQ) || /(ال)?وطني/i.test(query);
 
-  // STEP 1: Extract city/region tokens from the query (exclude role words).
-  const ROLE_WORDS = new Set([
-    "مكتب", "الكتب", "كاتب", "الكاتب", "اقليم", "اقليمي", "الاقليم", "الاقليمي",
+  // STEP 1: Extract city/region tokens from the query (exclude role words and Arabic stopwords/interrogatives).
+  const ROLE_AND_STOPWORDS = new Set([
+    "مكتب", "المكتب", "الكتب", "كاتب", "الكاتب", "اقليم", "اقليمي", "الاقليم", "الاقليمي",
     "جهه", "جهوي", "الجهوي", "جهة", "الجهة", "محلي", "المحلي", "وطني", "الوطني",
-    "فرع", "الفرع", "هاتف", "رقم", "مدير", "منسق", "مسؤول", "امين",
+    "فرع", "الفرع", "هاتف", "الهاتف", "رقم", "الرقم", "مدير", "منسق", "مسؤول", "امين", "الأمين",
     "شباب", "اتحاد", "تعليم", "fne", "الجامعه", "النقابيه", "النقابه", "تنظيم", "عضو",
+    // Arabic stopwords and interrogative particles — MUST NOT be treated as city words
+    "ما", "ماذا", "من", "هل", "هو", "هي", "كم", "كيف", "أين", "اين", "متى", "لماذا",
+    "عن", "في", "على", "الى", "إلى", "مع", "بين", "حول", "كل", "بعض", "غير", "معظم",
+    "شكون", "فين", "علاش", "كيفاش", "واش", "شنو", "ديال", "باش", "اللي", "الي",
+    "اريد", "أريد", "بغيت", "اعرف", "أعرف", "معرفة", "استفسار", "طلب", "شروط", "وثائق",
+    "سلام", "السلام", "مرحبا", "تحية",
   ]);
   const queryNorm = normalizeForMatch(query);
-  const queryCityWords = queryNorm.split(/\s+/).filter((w) => w.length >= 2 && !ROLE_WORDS.has(w));
-  // Raw tokens for ILIKE pre-filter
-  const rawTokens = tokens.filter((t) => t.length >= 2);
+  const queryCityWords = queryNorm.split(/\s+/).filter((w) => w.length >= 2 && !ROLE_AND_STOPWORDS.has(w));
+  // Raw tokens for ILIKE pre-filter (minimum length 3 to avoid noise)
+  const rawTokens = tokens.filter((t) => t.length >= 3 && !ROLE_AND_STOPWORDS.has(t));
 
   if (queryCityWords.length === 0 && rawTokens.length === 0) return null;
 
   // STEP 2: Pre-filter offices via Prisma ILIKE on name/region/province/parentOffice.
-  // This is the key fix: SQL-level ILIKE handles Arabic encoding correctly,
-  // and avoids the false positives of normalizeForMatch on short names like "فاس".
-  const orConditions = rawTokens.flatMap((term) => [
+  // Expand tokens with Arabic orthographic variants (ة <-> ه, with/without ال) for SQL ILIKE
+  const expandedTokens: string[] = [];
+  for (const t of rawTokens) {
+    expandedTokens.push(t);
+    if (t.endsWith("ه")) expandedTokens.push(t.slice(0, -1) + "ة");
+    if (t.endsWith("ة")) expandedTokens.push(t.slice(0, -1) + "ه");
+    if (t.startsWith("ال") && t.length >= 5) {
+      const bare = t.slice(2);
+      expandedTokens.push(bare);
+      if (bare.endsWith("ه")) expandedTokens.push(bare.slice(0, -1) + "ة");
+      if (bare.endsWith("ة")) expandedTokens.push(bare.slice(0, -1) + "ه");
+    } else if (!t.startsWith("ال")) {
+      const withAl = "ال" + t;
+      expandedTokens.push(withAl);
+      if (withAl.endsWith("ه")) expandedTokens.push(withAl.slice(0, -1) + "ة");
+      if (withAl.endsWith("ة")) expandedTokens.push(withAl.slice(0, -1) + "ه");
+    }
+  }
+  const uniqueExpandedTokens = Array.from(new Set(expandedTokens));
+
+  const orConditions = uniqueExpandedTokens.flatMap((term) => [
     { name: { contains: term, mode: "insensitive" as const } },
     { region: { contains: term, mode: "insensitive" as const } },
     { province: { contains: term, mode: "insensitive" as const } },
     { parentOffice: { contains: term, mode: "insensitive" as const } },
   ]);
 
-  let offices = await prisma.office.findMany({
+  if (orConditions.length === 0) return null;
+
+  const offices = await prisma.office.findMany({
     where: {
       isActive: true,
-      ...(orConditions.length > 0 ? { OR: orConditions } : {}),
+      OR: orConditions,
     },
     orderBy: [{ sourceId: "asc" }],
   });
-
-  // Fallback: if ILIKE returns nothing, load all offices.
-  if (offices.length === 0) {
-    offices = await prisma.office.findMany({
-      where: { isActive: true },
-      orderBy: [{ sourceId: "asc" }],
-    });
-  }
 
   if (offices.length === 0) return null;
 
@@ -366,13 +416,17 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
     const stripped = stripOfficePrefix(office.name);
     let matchCount = 0;
     for (const qw of queryCityWords) {
-      if (cityWordMatches(stripped, qw)) matchCount += 1;
+      if (cityWordMatches(stripped, qw)) matchCount += 3;
     }
-    // Boost if raw token literally appears in the office name (catches cases where
+    const normOfficeName = normalizeForMatch(office.name);
+    for (const qw of queryCityWords) {
+      if (normOfficeName.includes(qw)) matchCount += 2;
+    }
+    // Boost if any expanded token literally appears in the office name (catches cases where
     // normalizeForMatch collapsed the city word but ILIKE pre-filter passed it through).
     let exactBoost = 0;
-    for (const rt of rawTokens) {
-      if (rt.length >= 2 && (office.name.includes(rt) || (office.region && office.region.includes(rt)) || (office.province && office.province.includes(rt)))) {
+    for (const rt of uniqueExpandedTokens) {
+      if (rt.length >= 3 && (office.name.includes(rt) || (office.region && office.region.includes(rt)) || (office.province && office.province.includes(rt)))) {
         exactBoost += 5;
       }
     }
@@ -390,26 +444,33 @@ async function resolveVerifiedOffice(query: string, tokens: string[], allowFuzzy
   }
 
   // STEP 4: Resolve ties using level intent.
-  let chosen = top.office;
   const topScore = top.score;
   const sameScore = scored.filter((s) => s.score === topScore);
+  let candidates = sameScore;
   if (sameScore.length > 1) {
     if (wantsJihawi) {
-      const match = sameScore.find((s) => s.office.level === "جهوي");
-      if (match) chosen = match.office;
+      const match = sameScore.filter((s) => s.office.level === "جهوي");
+      if (match.length > 0) candidates = match;
     } else if (wantsIqlimi) {
-      const match = sameScore.find((s) => s.office.level === "إقليمي");
-      if (match) chosen = match.office;
+      const match = sameScore.filter((s) => s.office.level === "إقليمي");
+      if (match.length > 0) candidates = match;
     } else if (wantsMahali) {
-      const match = sameScore.find((s) => s.office.level === "محلي");
-      if (match) chosen = match.office;
+      const match = sameScore.filter((s) => s.office.level === "محلي");
+      if (match.length > 0) candidates = match;
     } else if (wantsWatani) {
-      const match = sameScore.find((s) => s.office.level === "وطني");
-      if (match) chosen = match.office;
+      const match = sameScore.filter((s) => s.office.level === "وطني");
+      if (match.length > 0) candidates = match;
     }
   }
 
-  return formatVerifiedOffice(chosen);
+  if (candidates.length > 1) {
+    // Ambiguity: multiple offices matched at the same level with the same top score.
+    // Per AGENTS.md, return clarification instead of exposing a guessed contact.
+    if (!allowFuzzySuggestions) return null;
+    return suggestOffices(candidates.map((c) => c.office), rawTokens);
+  }
+
+  return formatVerifiedOffice(candidates[0].office);
 }
 
 function suggestOffices(offices: VerifiedOffice[], rawTokens: string[]): string | null {
@@ -459,8 +520,6 @@ function suggestOffices(offices: VerifiedOffice[], rawTokens: string[]): string 
   return null;
 }
 
-
-
 function buildOfficeKnowledge(office: {
   name: string;
   level: string;
@@ -498,7 +557,13 @@ function buildOfficeKnowledge(office: {
 }
 
 async function findOfficeMatches(query: string): Promise<KnowledgeItem[]> {
-  const tokens = extractQueryTokens(query).filter((token) => token.length >= 3);
+  const GREETINGS_AND_STOPWORDS = new Set([
+    "سلام", "السلام", "مرحبا", "اهلين", "تحية", "نضالية", "صباح", "مساء", "عليكم",
+    "اريد", "أريد", "بغيت", "اعرف", "أعرف", "معرفة", "استفسار", "طلب", "شروط", "وثائق",
+  ]);
+  const tokens = extractQueryTokens(query).filter(
+    (token) => token.length >= 3 && !GREETINGS_AND_STOPWORDS.has(token)
+  );
   if (tokens.length === 0) return [];
 
   const offices = await prisma.office.findMany({
@@ -519,11 +584,12 @@ async function findOfficeMatches(query: string): Promise<KnowledgeItem[]> {
         (total, token) =>
           total +
           fields.reduce(
-            (fieldScore, field) =>
-              fieldScore +
-              (field.value.includes(token) || (field.value.length >= 3 && token.includes(field.value))
-                ? field.weight
-                : 0),
+            (fieldScore, field) => {
+              // Word-level match or full equality — avoid substring false matches like "سلام" matching "سلا"
+              const fieldWords = field.value.split(/\s+/);
+              const matches = fieldWords.some((w) => w === token) || field.value === token;
+              return fieldScore + (matches ? field.weight : 0);
+            },
             0,
           ),
         0,
@@ -598,10 +664,6 @@ export async function buildOfficeDirectAnswer(query: string): Promise<string | n
   const verifiedAnswer = await resolveVerifiedOffice(query, tokens, isOfficeContact);
   if (verifiedAnswer) return verifiedAnswer;
 
-  if (!isOfficeContact) return null;
-
-  // A contact query without a verified location must never fall through to fuzzy results.
-  return "لم أجد تطابقاً مؤكداً لاسم المكتب أو الإقليم. لتفادي عرض معلومات خاطئة، اكتب الاسم كاملاً أو استعمل قائمة المكاتب.";
 
   // Filter offices to only those matching ALL query tokens.
   // CRITICAL: Uses WORD-LEVEL matching (not substring) to prevent false positives.
@@ -804,8 +866,12 @@ export async function buildOfficeDirectAnswer(query: string): Promise<string | n
 
   // NOTE: Levenshtein fuzzy fallback REMOVED - too aggressive, matched "افني" to all "سيدي X" offices
   // Hub (fetchHubOffices) is authoritative and handles proper spelling variants
-  // DB fallback only uses exact/substring matching
-  if (ranked.length === 0) return null;
+  if (ranked.length === 0) {
+    if (isOfficeContact) {
+      return "لم أجد تطابقاً مؤكداً لاسم المكتب أو الإقليم. لتفادي عرض معلومات خاطئة، اكتب الاسم كاملاً أو استعمل قائمة المكاتب.";
+    }
+    return null;
+  }
 
   // Primary matched office
   const top = ranked[0].office;
@@ -876,13 +942,12 @@ function toWesternDigits(input: string): string {
     .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776));
 }
 
-function extractArticleNumber(query: string): number | null {
+export function extractArticleNumber(query: string): number | null {
   const normalized = toWesternDigits(normalizeForMatch(query));
-  const explicit = normalized.match(/(?:الفصل|ماده|مادة|article)\s*(\d{1,3})/i);
-  const fallback = normalized.match(/\b(\d{1,3})\b/);
-  const raw = explicit?.[1] || fallback?.[1];
-  if (!raw) return null;
-  const value = Number.parseInt(raw, 10);
+  // Only extract article number if explicitly preceded by article keywords (المادة, الفصل, article)
+  const explicit = normalized.match(/(?:الفصل|ماده|مادة|article)\s*(\d{1,3})\b/i);
+  if (!explicit?.[1]) return null;
+  const value = Number.parseInt(explicit[1], 10);
   return Number.isFinite(value) && value >= 1 && value <= 200 ? value : null;
 }
 
@@ -1045,6 +1110,29 @@ ${toneGuide[context.tone] || toneGuide.friendly}
     - أو منصة الخدمات الرقمية: https://hub.taalim.org
     - أو بوابة مسؤولي الجامعة: https://hub.taalim.org/responsables-fne.php
 
+### 🔗 ضوابط الروابط وعدم التكرار (Link Quality & Clean Anchors):
+- **ممنوع نهائياً كتابة الرابط كعنوان مثل [https://Taalim.org](https://Taalim.org) أو [https://...](https://...)!**
+- **ممنوع وضع الروابط داخل أقواس مثل (https://...) وممنوع إلصاق النجوم (*) بالروابط إطلاقاً مثل url* أو *url*.**
+- اذكر عنوان الوثيقة أو الرابط بنص عربي واضح، واجعل الرابط دائماً في سطر مستقل ونظيف بدون أقواس ولا نجوم ملتصقة:
+  مثال:
+  📄 *تحميل المذكرة الرسمية (PDF):*
+  https://...
+- **عدم تكرار رابط taalim.org**: يُمنع تكرار رابط موقع الجامعة أكثر من مرة واحدة في نفس الرد. إذا ورد في متن الجواب لا تعد ذكره في الخاتمة.
+- **حظر تام لاختلاق أي روابط أو مسارات وهمية (Strict Zero Fabricated URLs):**
+  * يُمنع منعاً كلياً وباتاً اختلاق أو تخمين أي رابط إلكتروني أو مسار صفحة غير معتمد (مثل /guide_debutant أو أي رابط آخر خارج قاعدة المعرفة المرفقة)!
+  * الروابط المسموح بذكرها حصراً هي العناوين المعتمدة رسمياً:
+    - https://Taalim.org
+    - https://hub.taalim.org
+    - https://hub.taalim.org/responsables-fne.php
+    - https://hub.taalim.org/adherer
+    - https://hub.taalim.org/calc_promotion_points.php
+    - https://hub.taalim.org/generate_request.php
+    - https://hub.taalim.org/milaf
+    - https://hub.taalim.org/participation_form.php
+    - https://hub.taalim.org/carte_scolaire.php
+  * إذا سأل المنخرط عن دليل أو وثيقة أو استمارة غير موجودة في قاعدة المعرفة المرفقة، لا تخترع لها رابطاً إطلاقاً على منصة hub.taalim.org، بل صرّح مباشرة بعدم توفر الدليل واعرض عليه فتح تذكرة مع المكتب المختص.
+
+
 ### 👤 حظر انتحال شخصية أي مسؤول نقابي أو التحدث باسمه (Strict No-Impersonation):
 - **أنت المساعد الذكي الرقمي الرسمي للجامعة، ولست شخصاً حقيقياً ولا مسؤولاً نقابياً بعينه!**
 - **ممنوع نهائياً ومطلقاً التحدث بلسان أو بصفة الكاتب الوطني عبد الله اغميمط، أو التوقيع باسمه، أو القول: "أنا عبد الله اغميمط" أو "بصفتي الكاتب الوطني" أو التحدث بضمير المتكلم نيابة عن قيادة الجامعة!**
@@ -1072,6 +1160,11 @@ ${context.language !== "auto" ? `دائمًا أجب بـ: ${context.language}` 
 - اترك سطراً فارغاً بين كل فقرة والتي تليها لإضفاء راحة بصرية وترتيب أنيق.
 - عند تقديم أسماء المكاتب أو الشروط القانونية أو المواد، رتبها في نقاط موجزة ومضبوطة.
 
+### 🚫 حظر تام للخطوط الأفقية وأشرطة الفصل التزيينية (No Horizontal Divider Lines):
+- **يُمنع منعاً باتاً ومطلقاً وضع خطوط أفقية أو شرطات أو فواصل ممتدة** مثل (──────── أو ━━━━━━━━ أو ══════ أو ------- أو ______ أو ***) في أي مكان داخل ردك!
+- هذه الخطوط تشوه مظهر الرسائل تماماً على واتساب وتكسر اتجاه النص العربي (RTL) وتتداخل مع الروابط.
+- للفصل بين المحاور أو الفقرات، استخدم **فقط سطراً فارغاً عادياً** مع عنوان فرعي واضح مسبوق برمز تعبيري (مثال: 📌 *عنوان المحور*).
+
 ## قاعدة المعرفة المتاحة
 استخدم المعلومات التالية للإجابة على أسئلة المنخرطين بدقة:
 
@@ -1094,9 +1187,11 @@ ${knowledgeSection}
 
 ## إرشادات أساسية
 - **أنت مساعد رقمي للجامعة الوطنية للتعليم FNE**: تتحدث بنبرة محترمة ودافئة، وتقدم معلومات دقيقة ومفيدة.
-- **التفريق بين "المرجع الإداري" و"الموقف النقابي"**:
-  * وثائق الوزارة (men.gov.ma) تُستعمل **كمرجع للمساطر والتواريخ الإدارية الرسمية** (موعد الدخول، تواريخ الامتحانات، أجل إيداع الملفات، شروط المنح).
-  * **⚠️ قاعدة مهمة جداً - موقف الجامعة النقابي**: **لا تُدرج موقف الجامعة النقابي أو المطالب الكفاحية أو البيانات النضالية في ردودك إلا إذا طلب المنخرط ذلك صراحةً** (مثل: "ما هو موقف النقابة من الترقية؟" أو "ما مطالب الجامعة؟"). عند الإجابة على أسئلة عملية وإجرائية (شروط الترقية، الآجال، نقط التنقيط، الوثائق المطلوبة)، اقتصر على المعطيات القانونية والإدارية المباشرة دون إضافة مواقف نقابية تلقائياً.
+- **التكامل بين النصوص الرسمية والمواكبة النقابية (المرجع الإداري والقانوني والدعم النقابي)**:
+  * في الأسئلة الإدارية والمهنية (الحركة الانتقالية، الاستيداع، الإلحاق، التقاعد، الترقية، الرخص):
+    1. **السند القانوني والإداري الرسمي**: قدّم الشروط، الآجال، والمساطر الرسمية الدقيقة المعتمدة لدى الوزارة (مذكرات men.gov.ma) والنصوص المؤطرة (فصول النظام الأساسي للوظيفة العمومية).
+    2. **التوجيه العملي والمواكبة النقابية**: وجّه المنخرط بكيفية إعداد ملفه والضمانات التي تحميه، مع إرشاده إلى منصة خدمات الجامعة https://hub.taalim.org (لحساب النقط، توليد الطلبات، أو إيداع الملفات الترافعية).
+    3. **المواقف والبيانات النضالية**: اقتصر على الجواب الإداري والقانوني العملي المباشر، ولا تقحم بيانات الإضراب أو المواقف الاحتجاجية إلا إذا سأل المنخرط صراحةً عن موقف أو تقييم الجامعة.
   * اشرح للمنخرط حقوقه القانونية وسبل الترافع النقابي عبر https://Taalim.org ومنصة الخدمات https://hub.taalim.org عند الحاجة.
 - استخدم أداة create_ticket عندما يحتاج المنخرط تدخلًا من المكتب النقابي أو متابعة إدارية شخصية
 - استخدم send_internal_email لإخبار المسؤولين بالقضايا العاجلة
@@ -1373,17 +1468,56 @@ export function findMatchingCannedResponse(
       score += 12;
     }
 
-    if (response.title && normalizedTitle.includes(normalizedQuery)) score += 10;
-    if (response.shortcut && normalizedShortcut.includes(normalizedQuery)) score += 10;
-    if (normalizedQuery.includes(normalizedTitle)) score += 10;
-    if (normalizedQuery.includes(normalizeForMatch(response.content))) score += 4;
+    const isDirectMatch =
+      (response.title && normalizedTitle === normalizedQuery) ||
+      (response.shortcut && normalizedShortcut === normalizedQuery) ||
+      (response.title && normalizedQuery.includes(normalizedTitle) && normalizedTitle.length >= 8);
 
-    if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+    if ((isDirectMatch || score >= 14) && (!bestMatch || score > bestMatch.score)) {
       bestMatch = { response, score };
     }
   }
 
   return bestMatch?.response ?? null;
+}
+
+export function findMatchingHoldingResponse(
+  query: string,
+  holdings: CannedResponseRecord[]
+): CannedResponseRecord | null {
+  const normQuery = normalizeForMatch(query).replace(/[^\p{L}\p{N}\s]/gu, "").trim();
+  if (!normQuery) return null;
+
+  const queryTokens = normQuery.split(/\s+/).filter((t) => t.length >= 3);
+
+  for (const h of holdings.filter((item) => item.isActive)) {
+    const normTitle = normalizeForMatch(h.title || "").replace(/[^\p{L}\p{N}\s]/gu, "").trim();
+    const normShortcut = normalizeForMatch(h.shortcut || "").replace(/[^\p{L}\p{N}\s]/gu, "").trim();
+
+    // 1. Exact equality with title or shortcut
+    if (normQuery === normTitle || (normShortcut && normQuery === normShortcut)) {
+      return h;
+    }
+
+    // 2. Substring containment
+    if (normTitle.length >= 8 && (normQuery.includes(normTitle) || normTitle.includes(normQuery))) {
+      return h;
+    }
+
+    // 3. Keyword / token intersection
+    const titleTokens = normTitle.split(/\s+/).filter((t) => t.length >= 3);
+    if (titleTokens.length >= 2 && queryTokens.length >= 2) {
+      const matchCount = titleTokens.filter((t) =>
+        queryTokens.some((qt) => qt === t || qt.includes(t) || t.includes(qt))
+      ).length;
+      const minLength = Math.min(titleTokens.length, queryTokens.length);
+      if (matchCount >= 2 && (matchCount / minLength >= 0.6 || matchCount >= 3)) {
+        return h;
+      }
+    }
+  }
+
+  return null;
 }
 
 export async function getKnowledgeBase(query?: string): Promise<KnowledgeItem[]> {
@@ -1590,9 +1724,9 @@ export async function getKnowledgeBase(query?: string): Promise<KnowledgeItem[]>
             score += 15;
           }
 
-          // Soft affinity bonus for target categories matched by intent (without excluding other categories)
+          // Strong affinity bonus for target categories matched by intent
           if (targetCategories && targetCategories.includes(entry.category?.name || "")) {
-            score += 5;
+            score += 35;
           }
 
           const metadata = entry.metadata as Record<string, unknown> | null;
@@ -1968,9 +2102,14 @@ export async function chat(
     : userMessage;
 
   // Contextual expansion for short follow-up questions (e.g. "اللائحة", "الأسماء", "من هم", "التشكيلة")
+  // Only apply if the previous message was sent recently (within 15 minutes) to avoid cross-session pollution.
   if (userMessage.trim().length <= 25) {
+    const now = Date.now();
     const recentCustMsg = conversation.messages.find(
-      (m) => (m.role === "customer" || m.role === "user") && m.content.trim() !== userMessage.trim()
+      (m) =>
+        (m.role === "customer" || m.role === "user") &&
+        m.content.trim() !== userMessage.trim() &&
+        (now - new Date(m.createdAt).getTime()) < 15 * 60 * 1000
     );
     if (recentCustMsg && recentCustMsg.content) {
       retrievalQuery = `${recentCustMsg.content.trim()} ${userMessage.trim()}`;
@@ -1988,13 +2127,31 @@ export async function chat(
     }),
   ]);
 
+  // Holding Disclaimers Interceptor: Check if query matches any holding disclaimer for an erroneous/pending question
+  const holdingResponses = (cannedResponses || []).filter(
+    (item) => item.category === "unanswered_holding"
+  ) as unknown as CannedResponseRecord[];
+  const normalCannedResponses = (cannedResponses || []).filter(
+    (item) => item.category !== "unanswered_holding"
+  ) as unknown as CannedResponseRecord[];
+
+  const matchingHoldingResponse = findMatchingHoldingResponse(userMessage, holdingResponses);
+  if (matchingHoldingResponse) {
+    await prisma.cannedResponse.update({
+      where: { id: matchingHoldingResponse.id },
+      data: { usageCount: { increment: 1 } },
+    }).catch(() => {});
+    logger.info(`[Engine] Intercepted query with holding disclaimer (id: ${matchingHoldingResponse.id})`);
+    return matchingHoldingResponse.content;
+  }
+
   const matchingAutomationReply = findMatchingAutomationReply(
     userMessage,
     conversation.channel,
     conversation.customerName,
     (automationRules || []) as unknown as AutomationRuleRecord[],
   );
-  const matchingCannedResponse = findMatchingCannedResponse(userMessage, cannedResponses || [], selectedMenuChoice);
+  const matchingCannedResponse = findMatchingCannedResponse(userMessage, normalCannedResponses, selectedMenuChoice);
 
   const knowledgeBase = await getKnowledgeBase(retrievalQuery);
   const directPublicServiceAnswer = selectedMenuChoice === "4"
@@ -2115,6 +2272,42 @@ export async function chat(
     });
   }
 
+  // Confidence scoring, hallucination detection, and unanswered question flagging
+  let isRefusal = isAssistantRefusal(response);
+  const confidence = estimateConfidenceDetailed(
+    response,
+    knowledgeBase.length,
+    false,
+    knowledgeBase,
+    userMessage
+  );
+
+  // HALLUCINATION GUARD: If the AI fabricated confident claims or invented URLs not backed by KB,
+  // replace the response with a safe refusal message BEFORE saving/sending.
+  if (confidence.hallucinationPenalty && confidence.hallucinationPenalty >= 0.4 && !isRefusal) {
+    logger.warn("[chat] Hallucination detected, replacing response with safe refusal", {
+      penalty: confidence.hallucinationPenalty,
+      reason: confidence.hallucinationReason,
+      userMessage: userMessage.substring(0, 100),
+    });
+
+    response = [
+      "⚠️ **تنبيه بخصوص الدقة**",
+      "",
+      "المعلومة أو الوثيقة المطلوبة غير متوفرة لدي بدقة كافية في قاعدة المعرفة المعتمدة حالياً، ولتجنب تقديم أي معطيات غير دقيقة أعتذر عن عدم تزويدك بتفاصيل غير مؤكدة.",
+      "",
+      "لتأكيد المعلومة بشكل رسمي والحصول على الوثائق المعتمدة، أقترح عليك:",
+      "• **فتح تذكرة** مع المكتب النقابي المختص لمواكبة ملفك وتقديم الوثيقة الرسمية.",
+      "• أو زيارة الموقع الرسمي للجامعة: https://Taalim.org",
+      "• أو منصة الخدمات الرقمية الرسمية: https://hub.taalim.org",
+      "",
+      "هل تود أن أفتح لك تذكرة تواصل مع المكتب النقابي الآن؟",
+    ].join("\n");
+
+    // Re-evaluate refusal status after substitution
+    isRefusal = isAssistantRefusal(response) || true;
+  }
+
   // Save assistant message
   const savedMessage = await prisma.message.create({
     data: {
@@ -2129,46 +2322,6 @@ export async function chat(
     where: { id: conversationId },
     data: { updatedAt: new Date() },
   });
-
-  // Confidence scoring, hallucination detection, and unanswered question flagging
-  const isRefusal = isAssistantRefusal(response);
-  const confidence = estimateConfidenceDetailed(
-    response,
-    knowledgeBase.length,
-    false,
-    knowledgeBase,
-    userMessage
-  );
-
-  // HALLUCINATION GUARD: If the AI fabricated confident claims not backed by KB,
-  // replace the response with a safe refusal message before saving/sending.
-  if (confidence.hallucinationPenalty && confidence.hallucinationPenalty >= 0.4 && !isRefusal) {
-    logger.warn("[chat] Hallucination detected, replacing response", {
-      penalty: confidence.hallucinationPenalty,
-      reason: confidence.hallucinationReason,
-      userMessage: userMessage.substring(0, 100),
-    });
-
-    response = [
-      "⚠️ **تنبيه بخصوص الدقة**",
-      "",
-      "المعلومة غير متوفرة لدي بدقة كافية في قاعدة المعرفة حالياً، وقد كنت على وشك تقديم تفاصيل قد لا تكون دقيقة.",
-      "",
-      "لتجنب أي لبس، أقترح عليك:",
-      "• **فتح تذكرة** مع المكتب المختص لتأكيد المعلومة بشكل رسمي",
-      "• أو زيارة الموقع الرسمي للجامعة: https://Taalim.org",
-      "• أو منصة الخدمات الرقمية: https://hub.taalim.org",
-      "",
-      "أعتذر عن عدم قدرتي على تقديم إجابة مؤكدة الآن. هل تود فتح تذكرة؟",
-    ].join("\n");
-
-    // Re-evaluate the safe response
-    const isRefusalAfter = isAssistantRefusal(response);
-    if (!isRefusalAfter) {
-      // Make sure the safe response itself passes
-      // (it should since it admits lack of knowledge)
-    }
-  }
 
   if (confidence.shouldEscalate) {
     await prisma.conversation.update({
@@ -2233,21 +2386,6 @@ export async function chat(
       });
     }
   }
-
-  // Annotate office responses with staleness when data is historical.
-  if (directOfficeAnswer) {
-    const today = new Date();
-    // Office registry data older than 6 months is treated as historical
-    // until the registry is refreshed. Until then, append a warning.
-    const sixMonthsAgo = new Date(today.getTime() - 1000 * 60 * 60 * 24 * 30 * 6);
-    response = annotateWithStaleness(response, {
-      source: "office_registry",
-      publishedAt: sixMonthsAgo,
-      status: "historical",
-      validUntil: null,
-    });
-  }
-  // ───────────────────────────────────────────────────────────────────────────
 
   return response;
 }
@@ -2479,11 +2617,12 @@ async function executeAIInternal(
 
   let response;
   try {
+    const effectiveMaxTokens = provider === "groq" ? Math.min(config.maxTokens, 800) : config.maxTokens;
     response = await openai.chat.completions.create({
       model: config.model,
       messages: messages as OpenAI.ChatCompletionMessageParam[],
       tools: owlyTools as OpenAI.ChatCompletionTool[],
-      max_tokens: config.maxTokens,
+      max_tokens: effectiveMaxTokens,
       temperature: config.temperature,
     });
   } catch (err: any) {
@@ -2516,7 +2655,7 @@ async function executeAIInternal(
         response = await openai.chat.completions.create({
           model: "qwen/qwen3.8-27b",
           messages: messages as OpenAI.ChatCompletionMessageParam[],
-          max_tokens: config.maxTokens,
+          max_tokens: Math.min(config.maxTokens, 800),
           temperature: config.temperature,
         });
       } catch (retryErr: any) {
@@ -2525,7 +2664,7 @@ async function executeAIInternal(
           response = await openai.chat.completions.create({
             model: "groq/compound-mini",
             messages: messages as OpenAI.ChatCompletionMessageParam[],
-            max_tokens: config.maxTokens,
+            max_tokens: Math.min(config.maxTokens, 800),
             temperature: config.temperature,
           });
         } catch (retryErr2: any) {

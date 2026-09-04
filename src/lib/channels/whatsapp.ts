@@ -11,8 +11,20 @@ import * as qrcode from "qrcode";
 import { prisma } from "@/lib/prisma";
 import { chat, checkKeywordTriggers, createNewConversation } from "@/lib/ai/engine";
 import { transcribeAudioBuffer } from "@/lib/ai/speech";
+import { isLegitimateKnowledgeQuestion } from "@/lib/ai/refusal-detector";
 import { logger } from "@/lib/logger";
 import { resolveCustomer } from "@/lib/customer-resolver";
+import { getOrCreateShortLink } from "@/lib/short-links";
+import {
+  FORUM_TAG,
+  FORUM_TAG_SLUG,
+  BAYAN_OPTED_OUT_TAG,
+  BAYAN_OPTED_OUT_SLUG,
+  subscribeCustomerToForum,
+  unsubscribeCustomerFromForum,
+  getActiveForumTopic,
+  submitForumPost,
+} from "@/lib/forum/forum-service";
 import { getCategoryArticles, getArticleById, cleanArticleBodyForChat, GUIDED_CATEGORY_QUESTIONS, MENU_CATEGORIES } from "./dynamic-menu";
 import { recordGroupMessageWatch } from "./whatsapp-group-watch";
 import {
@@ -83,6 +95,8 @@ interface GlobalWhatsAppState {
   reconnectTimeout: NodeJS.Timeout | null;
   /** Track JIDs where logo has already been sent (persisted via Prisma conversation metadata) */
   logoSentTo: Set<string>;
+  lastConnectedAt: number;
+  lastDisconnectedAt: number;
 }
 
 const g = globalThis as unknown as { __waState?: GlobalWhatsAppState };
@@ -97,6 +111,8 @@ if (!g.__waState) {
     isManuallyStopping: false,
     reconnectTimeout: null,
     logoSentTo: new Set<string>(),
+    lastConnectedAt: 0,
+    lastDisconnectedAt: 0,
   };
 }
 
@@ -105,15 +121,33 @@ const waState = g.__waState;
 const MESSAGE_DEDUP_TTL_MS = 2 * 60 * 1000;
 const processedInboundMessages = new Map<string, number>();
 
+interface InboundQueueItem {
+  jid: string;
+  body: string;
+  pushName?: string;
+  messageId?: string;
+  wasVoice: boolean;
+  timestamp: number;
+}
+
+const inboundDebounceMap = new Map<
+  string,
+  {
+    timer: NodeJS.Timeout;
+    items: InboundQueueItem[];
+  }
+>();
+
 /**
  * Send a one-off alert to the admin's Telegram chat when WhatsApp disconnects.
  * Uses the adminTelegramChatId from Settings table. Silent no-op if not set.
  */
 async function alertAdminOnDisconnect(message: string): Promise<void> {
   try {
-    const settings = await prisma.settings.findFirst({
-      select: { telegramBotToken: true, adminTelegramChatId: true },
-    });
+    const settings = (await prisma.settings.findFirst()) as {
+      telegramBotToken?: string | null;
+      adminTelegramChatId?: string | null;
+    } | null;
     if (!settings?.telegramBotToken || !settings?.adminTelegramChatId) {
       logger.info("[WhatsApp/Baileys] Admin Telegram not configured — skipping disconnect alert");
       return;
@@ -236,26 +270,23 @@ export const HUB_SERVICES_TEXT = [
   "5️⃣ *الخريطة المدرسية والتخطيط التربوي:*",
   "🔗 https://hub.taalim.org/carte_scolaire.php",
   "",
-  "────────────────",
   "💬 يمكنك أيضاً كتابة أي سؤال أو طلب التواصل مع مكتبك الإقليمي مباشرة!",
   "📋 للرجوع للقائمة الرئيسية أرسل *0*",
 ].join("\n");
 
 export const PROMOTION_CALC_IN_PREP_TEXT = [
   "🧮 *خدمة حساب وتدقيق نقط الترقية*",
-  "━━━━━━━━━━━━━━━━━━━━",
+  "",
   "⏳ *هذه الخدمة التفاعلية في طور الإعداد والبرمجة داخل الشات حالياً.*",
   "",
   "💡 يمكنك في الوقت الراهن استخدام أداة الحساب الرسمية المتاحة عبر المنصة الرقمية:",
   "🔗 https://hub.taalim.org/calc_promotion_points.php",
   "",
-  "────────────────",
   "📋 للرجوع للقائمة الرئيسية أرسل *0*",
 ].join("\n");
 
 export const DISCLAIMER_TEXT = [
   "⚖️ *توجيه تنظيمي وإخلاء مسؤولية*",
-  "━━━━━━━━━━━━━━━━━━━━",
   "",
   "يندرج هذا *المساعد الرقمي التفاعلي* ضمن المبادرات والخدمات الرقمية الحديثة التي تضعها الجامعة الوطنية للتعليم FNE رهن إشارة نساء ورجال التعليم، بهدف *تيسير الولوج السريع للمعلومة وتقديم التوجيه النقابي والإداري الأولي*.",
   "",
@@ -274,14 +305,12 @@ export const DISCLAIMER_TEXT = [
   "",
   "💡 *تجربة أكثر سلاسة:* لتجربة تفاعلية سريعة ومتقدمة بأزرار مرنة، يمكنكم أيضاً استخدام المساعد عبر تيليغرام: https://t.me/askfne_bot",
   "",
-  "────────────────",
   "📋 للرجوع للقائمة الرئيسية أرسل *0*",
 ].join("\n");
 
 function buildMenuText(): string {
   return [
     "مرحباً بك الرفيق/ة في المساعد الرقمي للجامعة الوطنية للتعليم FNE 👋",
-    "رهن إشارتك لتسهيل وصولك للمعلومات، التوجيه النقابي والإداري.",
     "💬 *اكتب سؤالك وسأجيبك فوراً!*",
     "📌 *أو اختر أحد المواضيع بإرسال رقمه:*",
     "1️⃣ 🏢 *المكاتب والتنظيم النقابي*",
@@ -314,7 +343,6 @@ async function buildCategoryPageText(choice: string, page = 1): Promise<{ text: 
   const lines: string[] = [
     `📌 *${data.icon} ${data.label}*`,
     `📄 صفحة ${data.currentPage} من ${data.totalPages}`,
-    "━━━━━━━━━━━━━━━━━━━━",
   ];
 
   if (data.articles.length === 0) {
@@ -330,7 +358,6 @@ async function buildCategoryPageText(choice: string, page = 1): Promise<{ text: 
   }
 
   lines.push("");
-  lines.push("─────────────────────");
   // Navigation row: all controls on ONE single line, well-spaced.
   // Reply with the article number to read it, 6 for next, 7 for previous, 0 for main menu.
   const navParts: string[] = [];
@@ -710,11 +737,9 @@ async function sendArticleMessages(
   if (dateStr) {
     header.push(`📅 *${dateStr}*`);
   }
-  header.push("━━━━━━━━━━━━━━━━━━━━");
 
   const footer = [
     "",
-    "────────────────",
     `📋 للرجوع لمقالات هذا القسم أرسل *${categoryChoice}*`,
     "📋 للرجوع للقائمة الرئيسية أرسل *0*",
   ].join("\n");
@@ -736,6 +761,52 @@ export function sanitizeWhatsAppMessage(text: string): string {
   if (!text) return "";
   let sanitized = text.replace(/\*\*(.*?)\*\*/g, "*$1*");
   sanitized = sanitized.replace(/^#+\s+(.+)$/gm, "📌 *$1*");
+
+  // 1. Unwrap URLs wrapped in parentheses and/or asterisks like (https://...)* or *(https://...)*
+  sanitized = sanitized.replace(/\(\s*(https?:\/\/[^\s\)]+)\s*\)\*?/gi, "$1");
+  sanitized = sanitized.replace(/\*\s*(https?:\/\/[^\s\*]+)\s*\*+/gi, "$1");
+
+  // 2. Clean markdown links with identical title/URL: [https://Taalim.org](https://Taalim.org) -> https://Taalim.org
+  sanitized = sanitized.replace(/\[\s*(https?:\/\/[^\s\]]+)\s*\]\(\s*https?:\/\/[^\s\)]+\s*\)\*?/gi, "$1");
+
+  // Convert descriptive markdown links [نص](url) into clean WhatsApp format with URL on its own line
+  sanitized = sanitized.replace(/(?:•\s*)?\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)\*?/g, (_match, title, url) => {
+    const cleanTitle = title.trim();
+    const cleanUrl = url.trim();
+    if (cleanTitle.toLowerCase() === cleanUrl.toLowerCase() || /^https?:\/\//i.test(cleanTitle)) {
+      return `\n${cleanUrl}`;
+    }
+    return `• *${cleanTitle}*\n${cleanUrl}`;
+  });
+
+  // 3. Strip trailing punctuation/asterisks/parentheses directly touching URLs (prevents broken link detection on WhatsApp)
+  sanitized = sanitized.replace(/(https?:\/\/[^\s\)\*\]>]+)[\)\*\]>]+/gi, "$1");
+
+  // 4. Deduplicate repeated links (e.g. multiple https://Taalim.org in same reply)
+  const seenUrls = new Set<string>();
+  sanitized = sanitized.replace(/(https?:\/\/[^\s\)\],]+)/gi, (fullUrl) => {
+    const norm = fullUrl.toLowerCase().replace(/\/+$/, "");
+    if (seenUrls.has(norm)) {
+      return "";
+    }
+    seenUrls.add(norm);
+    return fullUrl;
+  });
+
+  // Clean empty labels or dangling colons left by removed duplicate URLs
+  sanitized = sanitized.replace(/(?:من خلال الموقع الرسمي للجامعة:\s*)+$/gm, "");
+  sanitized = sanitized.replace(/:\s*:\s*/g, ": ");
+
+  // 5. Strip all decorative horizontal lines/bars (───, ━━━, ═══, ----, _____, etc.)
+  // These Unicode bars stretch across mobile screens, break RTL Arabic alignment, and deform text/URLs
+  sanitized = sanitized.replace(/^[ \t]*[─━═—\-_]{3,}[ \t]*$/gm, "");
+  sanitized = sanitized.replace(/^[ \t]*[─━═—\-_]{3,}\s*/gm, "");
+  sanitized = sanitized.replace(/\s*[─━═—\-_]{3,}[ \t]*$/gm, "");
+  sanitized = sanitized.replace(/[ \t]*[─━═—\-_]{3,}[ \t]*/g, " ");
+
+  // 6. Ensure standalone URLs preceded by Arabic text or labels are placed cleanly on their own new line
+  // Example: "📄 تحميل المذكرة: https://..." -> "📄 تحميل المذكرة:\nhttps://..."
+  sanitized = sanitized.replace(/([^\n\s])\s+(https?:\/\/[^\s]+)/g, "$1\n$2");
 
   // Fix lone bullet on its own line: \n•\ntext -> \n• text
   sanitized = sanitized.replace(/\n\s*([•◦▪️▫️\-\*])\s*\n\s*/g, "\n$1 ");
@@ -774,13 +845,15 @@ export function sanitizeWhatsAppMessage(text: string): string {
     const pTrimmed = rawP.trim();
     if (!pTrimmed) continue;
 
-    // Check if this block is a decorative separator (─── or ━━━)
-    if (/^[─━═\-_]{3,}$/.test(pTrimmed)) {
-      formattedBlocks.push(pTrimmed);
+    // Drop decorative separator blocks (─── or ━━━) completely
+    if (/^[─━═—\-_]{3,}$/.test(pTrimmed)) {
       continue;
     }
 
-    const pLines = pTrimmed.split("\n").map((l) => l.trim()).filter(Boolean);
+    const pLines = pTrimmed
+      .split("\n")
+      .map((l) => l.trim().replace(/^[─━═—\-_]{3,}\s*/, "").replace(/\s*[─━═—\-_]{3,}$/, ""))
+      .filter((l) => Boolean(l) && !/^[─━═—\-_]{3,}$/.test(l));
     if (pLines.length === 0) continue;
 
     // Check if lines in this block are list items / phone numbers / metadata
@@ -824,6 +897,104 @@ export function sanitizeWhatsAppMessage(text: string): string {
   }
 
   return formattedBlocks.join("\n\n").trim();
+}
+
+export const BAYAN_TAG = "مشتركو البيانات والمستجدات";
+export const BAYAN_TAG_SLUG = "bayan_subscribers";
+
+/**
+ * Automatically shortens long or percent-encoded URLs in text (especially ministerial PDFs).
+ */
+export async function shortenMessageUrls(text: string): Promise<string> {
+  if (!text) return "";
+  const urlRegex = /(https?:\/\/[^\s\)\*\]>]+)/gi;
+  const matches = Array.from(new Set(text.match(urlRegex) || []));
+  let result = text;
+  for (const rawUrl of matches) {
+    if (rawUrl.length > 45 || rawUrl.includes("%")) {
+      try {
+        const shortUrl = await getOrCreateShortLink(rawUrl);
+        result = result.split(rawUrl).join(shortUrl);
+      } catch (_) {}
+    }
+  }
+  return result;
+}
+
+export async function sanitizeWhatsAppMessageAsync(text: string): Promise<string> {
+  const shortened = await shortenMessageUrls(text);
+  return sanitizeWhatsAppMessage(shortened);
+}
+
+export async function subscribeCustomerToBayan(
+  customerId: string,
+  contact: string,
+  convId: string,
+  metadata: Record<string, unknown>
+): Promise<void> {
+  try {
+    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    if (customer) {
+      const existingTags = (customer.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+      const filtered = existingTags.filter((t) => t !== BAYAN_OPTED_OUT_TAG && t !== BAYAN_OPTED_OUT_SLUG);
+      if (!filtered.includes(BAYAN_TAG)) filtered.push(BAYAN_TAG);
+      if (!filtered.includes(BAYAN_TAG_SLUG)) filtered.push(BAYAN_TAG_SLUG);
+      await prisma.customer.update({
+        where: { id: customerId },
+        data: { tags: filtered.join(", ") },
+      });
+    }
+    await prisma.conversation.update({
+      where: { id: convId },
+      data: {
+        metadata: {
+          ...metadata,
+          bayanSubscribed: true,
+          bayanDeclined: false,
+          awaitingBayanOptIn: false,
+          bayanOptInPrompted: true,
+        },
+      },
+    });
+    logger.info(`[WhatsApp/OptIn] Customer ${contact} subscribed to Bayan updates`);
+  } catch (err) {
+    logger.error("[WhatsApp/OptIn] Error subscribing customer:", { error: String(err) });
+  }
+}
+
+export async function unsubscribeCustomerFromBayan(
+  customerId: string,
+  convId: string,
+  metadata: Record<string, unknown>
+): Promise<void> {
+  try {
+    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    if (customer) {
+      const existingTags = (customer.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+      const filtered = existingTags.filter((t) => t !== BAYAN_TAG && t !== BAYAN_TAG_SLUG);
+      if (!filtered.includes(BAYAN_OPTED_OUT_TAG)) filtered.push(BAYAN_OPTED_OUT_TAG);
+      if (!filtered.includes(BAYAN_OPTED_OUT_SLUG)) filtered.push(BAYAN_OPTED_OUT_SLUG);
+      await prisma.customer.update({
+        where: { id: customerId },
+        data: { tags: filtered.join(", ") },
+      });
+    }
+    await prisma.conversation.update({
+      where: { id: convId },
+      data: {
+        metadata: {
+          ...metadata,
+          bayanSubscribed: false,
+          bayanDeclined: true,
+          awaitingBayanOptIn: false,
+          bayanOptInPrompted: true,
+        },
+      },
+    });
+    logger.info(`[WhatsApp/OptIn] Customer ${customerId} unsubscribed from Bayan updates`);
+  } catch (err) {
+    logger.error("[WhatsApp/OptIn] Error unsubscribing customer:", { error: String(err) });
+  }
 }
 
 function isDuplicate(key?: string): boolean {
@@ -1010,14 +1181,30 @@ function extractMessageContent(msg: unknown): string {
 }
 
 // Feedback footer appended to every AI response on WhatsApp
-const WA_FEEDBACK_FOOTER = "\n━━━━━━━━━━━━\n💬 هل أفادك هذا الجواب؟ تفاعل بـ 👍 أو 👎";
+const WA_FEEDBACK_FOOTER = "\n💬 هل أفادك هذا الجواب؟ تفاعل بـ 👍 أو 👎";
 
-async function handleIncomingMessage(jid: string, body: string, pushName?: string, messageId?: string, wasVoice: boolean = false): Promise<void> {
+async function handleIncomingMessage(
+  jid: string,
+  body: string,
+  pushName?: string,
+  messageId?: string,
+  wasVoice: boolean = false,
+  reconnectNotice: string = ""
+): Promise<void> {
   try {
     if (jid.endsWith("@g.us") || jid.endsWith("@broadcast") || jid === "status@broadcast") return;
 
     const messageContent = body.trim();
     if (!messageContent) return;
+
+    let noticeAttached = false;
+    const attachNotice = (text: string): string => {
+      if (!noticeAttached && reconnectNotice) {
+        noticeAttached = true;
+        return `${reconnectNotice}${text}`;
+      }
+      return text;
+    };
 
     logger.info(`[WhatsApp/Baileys] Received from ${jid}: "${messageContent}"`);
 
@@ -1389,9 +1576,134 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
       await sendText(jid, askMsg);
       return;
     }
-    // ── End suggestion flow ──────────────────────────────────────────────────
+    // ── Bayan Newsletter Opt-in / Unsubscribe Handler ─────────────────────
+    const normMsg = messageContent.trim().toLowerCase().replace(/[!.،؟?]+$/g, "");
+    if (
+      normMsg === "اشتراك" ||
+      normMsg === "تفعيل البيانات" ||
+      (metadata.awaitingBayanOptIn === true && ["نعم", "موافق", "اه", "اييه", "oui", "yes", "ok", "1"].includes(normMsg))
+    ) {
+      await subscribeCustomerToBayan(customerId, customerContact, conversation.id, metadata);
+      const confirmText = [
+        "✅ *تم تسجيلك بنجاح في خدمة مستجدات وبيانات الجامعة الوطنية للتعليم FNE!* 🕊️",
+        "",
+        "ستصلك أهم البيانات والبلاغات والمذكرات الوزارية فور صدورها.",
+        "💡 _يمكنك إلغاء الاشتراك في أي وقت بإرسال كلمة: إلغاء الاشتراك._",
+        "",
+        "💬 اكتب سؤالك مباشرة أو أرسل *0* لاستعراض القائمة الرئيسية.",
+      ].join("\n");
+      await recordExchange(conversation.id, messageContent, confirmText);
+      await sendText(jid, confirmText);
+      return;
+    }
 
-    if (!menuShown || greeting || isNewConversation) {
+    if (
+      normMsg === "إلغاء الاشتراك" ||
+      normMsg === "الغاء الاشتراك" ||
+      (metadata.awaitingBayanOptIn === true && ["لا", "تخطي", "non", "no", "2"].includes(normMsg))
+    ) {
+      await unsubscribeCustomerFromBayan(customerId, conversation.id, metadata);
+      const cancelText = normMsg.includes("الغاء") || normMsg.includes("إلغاء")
+        ? "✅ تم إلغاء اشتراكك في خدمة البيانات بنجاح. لن تتلقى رسائل البث الإخبارية.\n\n💬 يمكنك سؤالي عن أي موضوع وسأجيبك فوراً!"
+        : "👍 تم، لن يتم إرسال بيانات إخبارية. يمكنك الاستفادة من جميع خدمات المساعد وسؤاله في أي وقت!\n\n💬 اكتب سؤالك أو أرسل *0* للقائمة الرئيسية.";
+      await recordExchange(conversation.id, messageContent, cancelText);
+      await sendText(jid, cancelText);
+      return;
+    }
+
+    // ── Forum Opt-in (55) / Opt-out (99) & Contribution Handler ──────────
+    if (normMsg === "55") {
+      await subscribeCustomerToForum(customerId, customerContact, conversation.id, {
+        ...metadata,
+        inForumMode: true,
+        awaitingForumAnswer: true,
+      });
+      const activeTopic = await getActiveForumTopic();
+      const topicDetails = activeTopic
+        ? [
+            `📌 *الموضوع الحالي المطروح للنقاش:*`,
+            `« *${activeTopic.title}* »`,
+            activeTopic.promptQuestion ? `\n${activeTopic.promptQuestion}\n` : "",
+            `✍️ *للمشاركة برأيك:* أرسل تعقيبك أو مقترحك هنا مباشرة وسيتم تسجيله لمراجعته وتعميمه.`,
+          ].filter(Boolean).join("\n")
+        : "💡 تم تسجيل دخولك، ولكن لا يوجد موضوع مفتوح للنقاش حالياً. سنخبرك فور إطلاق نقاش جديد!";
+
+      const forumOptInText = [
+        "✅ *أهلاً بك في منتدى النقاش التفاعلي FNE!* 🕊️",
+        "",
+        topicDetails,
+        "",
+        "────────────────────",
+        "🤖 *للخروج والعودة لطرح الأسئلة على المساعد الآلي:* أرسل الرقم *0* في أي وقت.",
+        "⛔ *لإلغاء الاشتراك:* أرسل الرقم *99*.",
+      ].join("\n");
+      await recordExchange(conversation.id, messageContent, forumOptInText);
+      await sendText(jid, forumOptInText);
+      return;
+    }
+
+    if (normMsg === "99") {
+      await unsubscribeCustomerFromForum(customerId, conversation.id, {
+        ...metadata,
+        inForumMode: false,
+        awaitingForumAnswer: false,
+      });
+      const forumOptOutText = [
+        "✅ *تم إلغاء اشتراكك في منتدى النقاش بنجاح.* ❌",
+        "",
+        "لن تصلك رسائل نقاشات المنتدى بعد الآن.",
+        "💡 _يمكنك إعادة الاشتراك في أي وقت بإرسال الرقم 55._",
+        "",
+        "💬 يمكنك الاستمرار في استخدام مساعد FNE لطرح أي سؤال أو طلب إداري!",
+      ].join("\n");
+      await recordExchange(conversation.id, messageContent, forumOptOutText);
+      await sendText(jid, forumOptOutText);
+      return;
+    }
+
+    // Capture forum response if an active topic exists and user is responding to it
+    const activeForum = await getActiveForumTopic();
+    const isExplicitForumMsg =
+      messageContent.includes("#منتدى") ||
+      messageContent.includes("#نقاش") ||
+      metadata.inForumMode === true ||
+      metadata.awaitingForumAnswer === true;
+
+    if (activeForum && isExplicitForumMsg && !directDigit && !greeting) {
+      const cleanContent = messageContent.replace(/#منتدى|#نقاش/g, "").trim();
+      if (cleanContent.length >= 2) {
+        await submitForumPost({
+          topicId: activeForum.id,
+          customerId,
+          authorName: customerName || "أحد الأساتذة",
+          authorContact: customerContact,
+          channel: "whatsapp",
+          content: cleanContent,
+        });
+        const ackText = [
+          "🤝 *شكراً لمشاركتك القيّمة في منتدى النقاش!*",
+          `📌 حول موضوع: *${activeForum.title}*`,
+          "",
+          "✅ تم تسجيل تعقيبك بنجاح وهو قيد المراجعة قبل نشره للزملاء. 💬",
+          "",
+          "✍️ يمكنك إرسال تعقيب إضافي، أو:",
+          "🤖 *للخروج والعودة لطرح الأسئلة على المساعد الآلي:* أرسل الرقم *0*.",
+          "⛔ *لإلغاء الاشتراك:* أرسل الرقم *99*.",
+        ].join("\n");
+        await recordExchange(conversation.id, messageContent, ackText);
+        await sendText(jid, ackText);
+        return;
+      }
+    }
+
+    const isDirectQuestion = !greeting && !directDigit && messageContent.trim().length > 3;
+
+    if (isDirectQuestion && metadata.awaitingBayanOptIn) {
+      metadata.awaitingBayanOptIn = false;
+    }
+
+    if ((!menuShown || greeting || isNewConversation) && !isDirectQuestion) {
+      const shouldPromptBayan = metadata.bayanOptInPrompted !== true;
       await prisma.conversation.update({
         where: { id: conversation.id },
         data: {
@@ -1402,18 +1714,44 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
             activeCategory: null,
             categoryPage: 1,
             pageArticleIds: [],
+            awaitingBayanOptIn: shouldPromptBayan,
+            bayanOptInPrompted: true,
           },
         },
       });
-      const menuText = buildMenuText();
+      let menuText = buildMenuText();
+      if (shouldPromptBayan) {
+        menuText += "\n\n📰 *مستجدات وبيانات FNE:*\nهل ترغب في التوصل بآخر البيانات والمستجدات عبر واتساب؟\nأرسل *نعم* للاشتراك، أو *لا* للتخطي.";
+      }
       await recordExchange(conversation.id, messageContent, menuText);
       // Always send the FNE logo with the menu text as the caption (on every menu display)
-      await sendMenuWithLogo(jid, menuText);
+      await sendMenuWithLogo(jid, attachNotice(menuText));
       logger.info(`[WhatsApp/Baileys] Menu (with logo) sent to ${customerContact}`);
       return;
     }
 
+
     if (directDigit === "0") {
+      // If user was in forum mode, explicitly exit forum mode
+      if (metadata.inForumMode === true) {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            metadata: {
+              ...metadata,
+              inForumMode: false,
+              awaitingForumAnswer: false,
+              menuShown: true,
+              awaitingMenuChoice: true,
+            },
+          },
+        });
+        const exitText = "🔙 *تم الخروج من منتدى النقاش والعودة إلى المساعد الآلي.* 🕊️\n\n💬 يمكنك الآن طرح أي سؤال وسأجيبك فوراً، أو أرسل *0* لاستعراض القائمة الرئيسية.";
+        await recordExchange(conversation.id, messageContent, exitText);
+        await sendText(jid, exitText);
+        return;
+      }
+
       // Always leave the hub menu and return to the main service menu.
       if (metadata[HUB_MENU_META_KEY]) {
         clearHubMenuState(conversation.id);
@@ -1424,6 +1762,8 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
         data: {
           metadata: {
             ...metadata,
+            inForumMode: false,
+            awaitingForumAnswer: false,
             menuShown: true,
             awaitingMenuChoice: true,
             activeCategory: null,
@@ -1438,7 +1778,7 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
       });
       const menuText = buildMenuText();
       await recordExchange(conversation.id, messageContent, menuText);
-      await sendMenuWithLogo(jid, menuText);
+      await sendMenuWithLogo(jid, attachNotice(menuText));
       return;
     }
 
@@ -1466,7 +1806,7 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
     }
     if (guidedQuestions && directDigit && Number(directDigit) >= 1 && Number(directDigit) <= guidedQuestions.length) {
       const question = guidedQuestions[Number(directDigit) - 1];
-      const answer = sanitizeWhatsAppMessage(await chat(conversation.id, question));
+      const answer = await sanitizeWhatsAppMessageAsync(await chat(conversation.id, question));
       const reply = `📌 *${question}*\n\n${answer}\n\n0️⃣ للقائمة الرئيسية\n↩️ أرسل *${guidedCategory}* للرجوع إلى أسئلة هذا القسم`;
       await prisma.conversation.update({
         where: { id: conversation.id },
@@ -1477,7 +1817,7 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
       return;
     }
     if (guidedQuestions && !directDigit && messageContent.trim()) {
-      const answer = sanitizeWhatsAppMessage(await chat(conversation.id, messageContent));
+      const answer = await sanitizeWhatsAppMessageAsync(await chat(conversation.id, messageContent));
       const reply = `${answer}\n\n0️⃣ للقائمة الرئيسية\n↩️ أرسل *${guidedCategory}* للرجوع إلى أسئلة هذا القسم`;
       await prisma.conversation.update({
         where: { id: conversation.id },
@@ -1750,7 +2090,7 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
     if (triggerReply) {
       logger.info(`[WhatsApp/Baileys] Keyword trigger matched for "${messageContent}"`);
       await recordExchange(conversation.id, messageContent, triggerReply);
-      await sendText(jid, triggerReply);
+      await sendText(jid, attachNotice(triggerReply));
       return;
     }
 
@@ -1765,12 +2105,12 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
 
       const menuMsg = getRequestMenuText();
       await recordExchange(conversation.id, messageContent, menuMsg);
-      await sendText(jid, menuMsg);
+      await sendText(jid, attachNotice(menuMsg));
       return;
     }
 
     const aiResponse = await chat(conversation.id, messageContent);
-    const cleanResponse = sanitizeWhatsAppMessage(aiResponse);
+    const cleanResponse = await sanitizeWhatsAppMessageAsync(aiResponse);
 
     // If the AI asks for ticket description, set the awaitingTicketDescription state
     // so the next message goes directly to ticket creation (not office matching).
@@ -1783,7 +2123,7 @@ async function handleIncomingMessage(jid: string, body: string, pushName?: strin
 
     const cleanVoiceQuestion = messageContent.replace(/^[«"'\s*]+|[»"'\s*]+$/g, "").trim();
     const voicePrefix = wasVoice && cleanVoiceQuestion ? `*${cleanVoiceQuestion}*\n\n` : "";
-    const fullReply = `${voicePrefix}${cleanResponse}\n\n────────────────\n📋 للرجوع للقائمة الرئيسية أرسل *0*${WA_FEEDBACK_FOOTER}`;
+    const fullReply = attachNotice(`${voicePrefix}${cleanResponse}\n\n📋 للرجوع للقائمة الرئيسية أرسل *0*${WA_FEEDBACK_FOOTER}`);
     await sendText(jid, fullReply);
 
     if (!menuShown || awaitingMenuChoice) {
@@ -1931,6 +2271,8 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
       waState.qrTimestamp = 0;
       waState.connectionStatus = "connected";
       waState.statusMessage = "Connected to WhatsApp. Agent is active!";
+      waState.lastConnectedAt = Date.now();
+      logger.info(`[WhatsApp/Baileys] Connected at ${new Date(waState.lastConnectedAt).toISOString()}`);
 
       // Hydrate logoSentTo Set from conversation metadata so we don't
       // re-send the logo after Docker restarts.
@@ -1978,16 +2320,18 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
     }
 
     if (connection === "close") {
+      waState.lastDisconnectedAt = Date.now();
+      logger.info(`[WhatsApp/Baileys] Disconnected at ${new Date(waState.lastDisconnectedAt).toISOString()}`);
       const error = lastDisconnect?.error as Boom | undefined;
       const statusCode = error?.output?.statusCode;
-      // 403 = Forbidden = account banned by WhatsApp/Meta. Do NOT retry — manual intervention required.
-      // 401 = Unauthorized = session invalid. Also requires manual reconnect.
-      // 428 = Something went wrong, possibly device removed from phone.
-      const isBannedOrLoggedOut = statusCode === DisconnectReason.loggedOut
-        || statusCode === 403
-        || statusCode === 401
-        || statusCode === 428;
-      const shouldReconnect = !isBannedOrLoggedOut;
+      // In Baileys, 401 = loggedOut (device unlinked from phone).
+      // 403 = forbidden (account banned by Meta).
+      // 428 = connectionClosed (normal socket drop / network glitch) -> MUST RECONNECT, NEVER delete session!
+      // 408 = connectionLost / timedOut -> reconnect.
+      // 515 = restartRequired -> reconnect.
+      const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+      const isBanned = statusCode === 403;
+      const shouldReconnect = !isLoggedOut && !isBanned;
 
       logger.info(
         `[WhatsApp/Baileys] Connection closed. statusCode=${statusCode}, shouldReconnect=${shouldReconnect}`
@@ -2004,16 +2348,12 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
       }
 
       // Specific guidance for banned / logged-out accounts
-      if (isBannedOrLoggedOut) {
-        if (statusCode === 403) {
-          waState.statusMessage = "BLOQUÉ: compte WhatsApp banni (403). Faites appel sur https://www.whatsapp.com/contact/";
-        } else if (statusCode === 401) {
-          waState.statusMessage = "Session expirée. Reconnectez-vous depuis le tableau de bord.";
-        } else if (statusCode === 428) {
-          waState.statusMessage = "Connexion perdue. Reconnectez-vous depuis le tableau de bord.";
-        } else {
-          waState.statusMessage = "Déconnecté. Reconnectez-vous depuis le tableau de bord.";
-        }
+      if (isBanned) {
+        waState.statusMessage = "BLOQUÉ: compte WhatsApp banni (403). Faites appel sur https://www.whatsapp.com/contact/";
+      } else if (isLoggedOut) {
+        waState.statusMessage = "Session expirée (déconnecté depuis le téléphone). Reconnectez-vous depuis le tableau de bord.";
+      } else {
+        waState.statusMessage = "Connexion fermée temporairement. Reconnexion en cours...";
       }
 
       try {
@@ -2236,7 +2576,37 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
       const messageId = msg.key.id ?? undefined;
 
       if (type === "notify") {
-        await handleIncomingMessage(jid, body, pushName, messageId, wasVoice);
+        const msgTime = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now();
+        const queueItem: InboundQueueItem = {
+          jid,
+          body,
+          pushName,
+          messageId,
+          wasVoice,
+          timestamp: msgTime,
+        };
+
+        const isRecentlyConnected =
+          waState.lastConnectedAt > 0 && Date.now() - waState.lastConnectedAt < 30000;
+        const debounceMs = isRecentlyConnected ? 2500 : 1200;
+
+        const existingQueue = inboundDebounceMap.get(jid);
+        if (existingQueue) {
+          clearTimeout(existingQueue.timer);
+          existingQueue.items.push(queueItem);
+          existingQueue.timer = setTimeout(
+            () => void processDebouncedInbound(jid),
+            debounceMs
+          );
+        } else {
+          inboundDebounceMap.set(jid, {
+            items: [queueItem],
+            timer: setTimeout(
+              () => void processDebouncedInbound(jid),
+              debounceMs
+            ),
+          });
+        }
       } else if (type === "append") {
         // Appended history message: record without re-triggering AI
         try {
@@ -2263,6 +2633,87 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
       }
     }
   });
+}
+
+async function processDebouncedInbound(jid: string): Promise<void> {
+  const queue = inboundDebounceMap.get(jid);
+  inboundDebounceMap.delete(jid);
+  if (!queue || queue.items.length === 0) return;
+
+  const items = queue.items;
+
+  // Determine if this batch contains catch-up messages from disconnection or network delay
+  const isCatchUp = items.some((it) => {
+    const isLagged = Date.now() - it.timestamp > 30000;
+    const duringDowntime =
+      waState.lastConnectedAt > 0 &&
+      it.timestamp < waState.lastConnectedAt - 2000 &&
+      Date.now() - waState.lastConnectedAt < 60000;
+    return isLagged || duringDowntime;
+  });
+
+  // 1. Ensure ALL intermediate messages in the batch are saved to Prisma message history
+  for (const it of items) {
+    try {
+      const cId = await resolveCustomer("whatsapp", jid, it.pushName || "Unknown");
+      let conv = await prisma.conversation.findFirst({
+        where: { channel: "whatsapp", customerContact: jid },
+      });
+      if (!conv) {
+        conv = await createNewConversation("whatsapp", it.pushName || "Unknown", jid, cId);
+      }
+      const existingMsg = await prisma.message.findFirst({
+        where: { conversationId: conv.id, content: it.body },
+      });
+      if (!existingMsg) {
+        await prisma.message.create({
+          data: {
+            conversationId: conv.id,
+            role: "customer",
+            content: it.body,
+            createdAt: new Date(it.timestamp),
+          },
+        });
+        await prisma.conversation.update({
+          where: { id: conv.id },
+          data: { updatedAt: new Date() },
+        });
+      }
+    } catch (dbErr) {
+      logger.warn("[WhatsApp/Debounce] Failed to persist buffered message:", { error: String(dbErr) });
+    }
+  }
+
+  // 2. Select target message to answer:
+  // If multiple messages, prioritize the latest substantive inquiry, else the last message
+  let target = items[items.length - 1];
+  if (items.length > 1) {
+    const substantive = items
+      .slice()
+      .reverse()
+      .find((it) => isLegitimateKnowledgeQuestion(it.body));
+    if (substantive) {
+      target = substantive;
+    }
+  }
+
+  // 3. Prepare reconnect reassurance banner if caught up after a disconnection
+  const reconnectNotice = isCatchUp
+    ? "🔄 *مرحباً بك رفيقي/رفيقتي.. تم استرجاع الاتصال بنجاح ونعتذر عن هذا التأخر المؤقت.* 🕊️\n\n"
+    : "";
+
+  try {
+    await handleIncomingMessage(
+      target.jid,
+      target.body,
+      target.pushName,
+      target.messageId,
+      target.wasVoice,
+      reconnectNotice
+    );
+  } catch (err) {
+    logger.error("[WhatsApp/Debounce] Error handling debounced message:", { error: String(err) });
+  }
 }
 
 export function getWhatsAppStatus() {
@@ -2349,7 +2800,7 @@ export async function disconnectWhatsApp(): Promise<void> {
 export async function sendWhatsAppMessage(to: string, message: string): Promise<boolean> {
   if (!waState.sock || waState.connectionStatus !== "connected") return false;
   const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
-  const cleanResponse = sanitizeWhatsAppMessage(message);
+  const cleanResponse = await sanitizeWhatsAppMessageAsync(message);
   await sendText(jid, cleanResponse);
   return true;
 }

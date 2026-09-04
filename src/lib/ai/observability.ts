@@ -54,7 +54,7 @@ export function logAnswer(entry: Omit<AnswerLogEntry, "timestamp">): void {
 
     // Strip any accidental phone-like strings from intent/reason fields
     // (defence in depth — the caller should already not pass phones)
-    const phonePattern = /(?:\+?212)?[\s.-]?[0-9]{9,10}/g;
+    const phonePattern = /(?:\+?212[\s.-]?)?(?:0[\s.-]?)?[5-7](?:[\s.-]?[0-9]){8}|(?:\+?212)?[\s.-]?[0-9]{9,10}/g;
     sanitized.reason = sanitized.reason?.replace(phonePattern, "[TÉLÉPHONE]");
 
     logger.info("[IntentRouter] answer_log", sanitized);

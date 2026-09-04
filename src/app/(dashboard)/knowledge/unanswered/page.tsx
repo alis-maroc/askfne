@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import {
   HelpCircle,
   Search,
-  Plus,
   MessageSquare,
   Calendar,
   Loader2,
@@ -14,8 +13,13 @@ import {
   Radio,
   Sparkles,
   RefreshCw,
-  FolderOpen,
   Trash2,
+  Send,
+  CheckCircle2,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -29,6 +33,12 @@ interface UnansweredQuestion {
   lastResponse: string;
   conversationId: string;
   customerName: string;
+  customerContact?: string | null;
+  sourceType?: "manual" | "refusal" | "feedback";
+  isHeld?: boolean;
+  holdingId?: string | null;
+  holdingMessage?: string | null;
+  holdingUpdatedAt?: string | null;
 }
 
 interface CategoryOption {
@@ -42,8 +52,16 @@ export default function UnansweredQuestionsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("all"); // "all" | "today" | "week" | "month"
+  const [frequencyFilter, setFrequencyFilter] = useState("all"); // "all" | "multiple" | "high" | "single"
+  const [sourceFilter, setSourceFilter] = useState("all"); // "all" | "manual" | "refusal" | "feedback"
+  const [sortBy, setSortBy] = useState("count-desc"); // "count-desc" | "date-desc" | "date-asc" | "count-asc"
 
-  // Add to Knowledge modal state
+  // Bulk selection state
+  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // Add / Draft Knowledge modal state
   const [selectedQuestion, setSelectedQuestion] = useState<UnansweredQuestion | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [categoryId, setCategoryId] = useState("");
@@ -53,6 +71,32 @@ export default function UnansweredQuestionsPage() {
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [dismissingKey, setDismissingKey] = useState<string | null>(null);
+
+  // AI draft states
+  const [draftingKey, setDraftingKey] = useState<string | null>(null);
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [notifyWhatsApp, setNotifyWhatsApp] = useState(true);
+
+  // Re-check against Knowledge Base states
+  const [recheckingKey, setRecheckingKey] = useState<string | null>(null);
+  const [recheckResult, setRecheckResult] = useState<{
+    question: UnansweredQuestion;
+    answer: string;
+    hasAnswer: boolean;
+    message: string;
+  } | null>(null);
+  const [recheckResolving, setRecheckResolving] = useState(false);
+  const [recheckNotifyWa, setRecheckNotifyWa] = useState(true);
+
+  // Warning & Holding modal state
+  const [warningQuestion, setWarningQuestion] = useState<UnansweredQuestion | null>(null);
+  const [warnCustomerMessage, setWarnCustomerMessage] = useState("");
+  const [holdingDisclaimerText, setHoldingDisclaimerText] = useState("");
+  const [warnNotifyCustomer, setWarnNotifyCustomer] = useState(true);
+  const [warnEnableHolding, setWarnEnableHolding] = useState(true);
+  const [warnSubmitting, setWarnSubmitting] = useState(false);
+  const [warnLifting, setWarnLifting] = useState(false);
+  const [warnSuccess, setWarnSuccess] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -71,18 +115,66 @@ export default function UnansweredQuestionsPage() {
         const cData = await resCats.json();
         const cats = Array.isArray(cData) ? cData : cData.data || [];
         setCategories(cats);
-        if (cats.length > 0) setCategoryId(cats[0].id);
+        if (cats.length > 0 && !categoryId) setCategoryId(cats[0].id);
       }
     } catch (err) {
       console.error("Failed to load unanswered questions:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [categoryId]);
 
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  // Toggle single question selection
+  function toggleSelectQuestion(qText: string) {
+    setSelectedQuestions((prev) => {
+      const next = new Set(prev);
+      if (next.has(qText)) next.delete(qText);
+      else next.add(qText);
+      return next;
+    });
+  }
+
+  // Toggle select all visible
+  function toggleSelectAll() {
+    if (selectedQuestions.size === filtered.length && filtered.length > 0) {
+      setSelectedQuestions(new Set());
+    } else {
+      setSelectedQuestions(new Set(filtered.map((q) => q.question)));
+    }
+  }
+
+  // Bulk delete selected questions
+  async function handleBulkDelete() {
+    if (selectedQuestions.size === 0) return;
+    const count = selectedQuestions.size;
+    if (!confirm(`هل أنت متأكد من حذف وتجاهل (${count}) أسئلة محددة دفعة واحدة؟`)) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/knowledge/unanswered", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questions: Array.from(selectedQuestions) }),
+      });
+
+      if (res.ok) {
+        setQuestions((prev) => prev.filter((q) => !selectedQuestions.has(q.question)));
+        setSelectedQuestions(new Set());
+      } else {
+        alert("فشل حذف الأسئلة المحددة");
+      }
+    } catch (err) {
+      console.error("Failed bulk delete:", err);
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
 
   function openAddToKnowledgeModal(item: UnansweredQuestion) {
     setSelectedQuestion(item);
@@ -90,6 +182,132 @@ export default function UnansweredQuestionsPage() {
     setContent("");
     setPriority(10);
     setSuccessMessage("");
+    setNotifyWhatsApp(item.channels.includes("whatsapp") && !!item.customerContact);
+  }
+
+  async function handleGenerateDraft(item: UnansweredQuestion) {
+    setDraftingKey(item.question);
+    try {
+      const res = await fetch("/api/knowledge/unanswered/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: item.question,
+          conversationId: item.conversationId,
+        }),
+      });
+
+      if (res.ok) {
+        const { draft } = await res.json();
+        setSelectedQuestion(item);
+        setTitle(draft.title || item.question);
+        setContent(draft.content || "");
+        if (draft.categoryId) setCategoryId(draft.categoryId);
+        setPriority(draft.priority || 10);
+        setNotifyWhatsApp(item.channels.includes("whatsapp") && !!item.customerContact);
+        setSuccessMessage("");
+      } else {
+        openAddToKnowledgeModal(item);
+      }
+    } catch (err) {
+      console.error("Failed to generate AI draft:", err);
+      openAddToKnowledgeModal(item);
+    } finally {
+      setDraftingKey(null);
+    }
+  }
+
+  async function handleRegenerateDraft() {
+    if (!selectedQuestion) return;
+    setIsGeneratingDraft(true);
+    try {
+      const res = await fetch("/api/knowledge/unanswered/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: selectedQuestion.question,
+          conversationId: selectedQuestion.conversationId,
+        }),
+      });
+
+      if (res.ok) {
+        const { draft } = await res.json();
+        setTitle(draft.title || selectedQuestion.question);
+        setContent(draft.content || "");
+        if (draft.categoryId) setCategoryId(draft.categoryId);
+        setPriority(draft.priority || 10);
+      }
+    } catch (err) {
+      console.error("Failed to re-generate AI draft:", err);
+    } finally {
+      setIsGeneratingDraft(false);
+    }
+  }
+
+  // Re-check question against latest Knowledge Base
+  async function handleRecheck(item: UnansweredQuestion) {
+    setRecheckingKey(item.question);
+    try {
+      const res = await fetch("/api/knowledge/unanswered/recheck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: item.question,
+          conversationId: item.conversationId,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setRecheckResult({
+          question: item,
+          answer: data.answer || "",
+          hasAnswer: data.hasAnswer === true,
+          message: data.message || "",
+        });
+        setRecheckNotifyWa(item.channels.includes("whatsapp") && !!item.customerContact);
+      } else {
+        alert("تعذر إعادة اختبار السؤال، تأكد من اتصال الخادم.");
+      }
+    } catch (err) {
+      console.error("Failed to recheck:", err);
+    } finally {
+      setRecheckingKey(null);
+    }
+  }
+
+  // Approve rechecked answer and resolve question
+  async function handleApproveRecheckResolution() {
+    if (!recheckResult || !recheckResult.hasAnswer) return;
+
+    setRecheckResolving(true);
+    try {
+      const res = await fetch("/api/knowledge/unanswered/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: recheckResult.question.question,
+          title: recheckResult.question.question,
+          content: recheckResult.answer,
+          categoryId: categoryId || categories[0]?.id || "",
+          priority: 10,
+          conversationId: recheckResult.question.conversationId,
+          notifyUser: recheckNotifyWa,
+        }),
+      });
+
+      if (res.ok) {
+        const answeredQ = recheckResult.question.question;
+        setQuestions((prev) => prev.filter((q) => q.question !== answeredQ));
+        setRecheckResult(null);
+      } else {
+        alert("تعذر اعتماد الجواب");
+      }
+    } catch (err) {
+      console.error("Failed to resolve rechecked question:", err);
+    } finally {
+      setRecheckResolving(false);
+    }
   }
 
   async function handleDismiss(item: UnansweredQuestion) {
@@ -103,6 +321,11 @@ export default function UnansweredQuestionsPage() {
       });
       if (res.ok) {
         setQuestions((prev) => prev.filter((q) => q.question !== key));
+        setSelectedQuestions((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
       }
     } catch (err) {
       console.error("Failed to dismiss:", err);
@@ -111,30 +334,176 @@ export default function UnansweredQuestionsPage() {
     }
   }
 
-  async function handleSaveKnowledgeEntry(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim() || !content.trim() || !categoryId) return;
+  function openWarningModal(item: UnansweredQuestion) {
+    setWarningQuestion(item);
+    setWarnNotifyCustomer(Boolean(item.customerContact));
+    setWarnEnableHolding(true);
+    setWarnSuccess("");
 
-    setSaving(true);
+    const customerGreeting =
+      item.customerName && item.customerName !== "منخرط" && item.customerName !== "Unknown"
+        ? ` ${item.customerName}`
+        : "";
+
+    const defaultMsg = [
+      "⚠️ *تنبيه وتصويب هام من الجامعة الوطنية للتعليم FNE* 🕊️",
+      "",
+      `تحية نضالية رفيقي/رفيقتي${customerGreeting}،`,
+      "نحيطكم علماً بأن الجواب الآلي الذي تم تقديمه سابقاً بخصوص استفساركم:",
+      `« *${item.question.trim()}* »`,
+      "هو جواب غير دقيق أو شابته بعض النواقص، ونرجو منكم التفضل بعدم الأخذ به أو الاعتماد عليه.",
+      "",
+      "📌 *المتابعة الجارية:*",
+      "الموضوع قيد التدقيق والمراجعة الإدارية والنقابية مع الهياكل والمكاتب المختصة لضبط المعطيات الرسمية والنهائية، وبمجرد التوصل بالجواب الشامل والدقيق سنوافيكم به مباشرة هنا.",
+      "",
+      "نعتذر لكم عن هذا اللبس غير المقصود، ونحن دائماً في خدمتكم وإشارتكم!",
+      "✊ عاشت الجامعة الوطنية للتعليم FNE صامدة ومناضلة.",
+    ].join("\n");
+    setWarnCustomerMessage(defaultMsg);
+
+    const defaultHolding =
+      item.holdingMessage ||
+      [
+        "⚠️ *تنبيه وتوضيح من الجامعة الوطنية للتعليم FNE* 🕊️",
+        "",
+        `بخصوص الاستفسار حول: « *${item.question.trim()}* »`,
+        "",
+        "نحيطكم علماً بأن هذا الموضوع قيد التدقيق والتحري الإداري والنقابي حالياً لضبط المعطيات الرسمية الدقيقة والمعتمدة من الهياكل المختصة.",
+        "نرجو عدم اعتماد أي أجوبة سابقة أو غير رسمية، وسيتم تزويدكم بالجواب الرسمي الشامل فور نشره في قاعدة المعرفة.",
+        "",
+        "✊ الجامعة الوطنية للتعليم FNE في خدمتكم دائماً.",
+      ].join("\n");
+    setHoldingDisclaimerText(defaultHolding);
+  }
+
+  async function handleSendWarningAndHold(e: React.FormEvent) {
+    e.preventDefault();
+    if (!warningQuestion) return;
+
+    setWarnSubmitting(true);
+    setWarnSuccess("");
+
     try {
-      const res = await fetch("/api/knowledge/entries", {
+      const res = await fetch("/api/knowledge/unanswered/warn-correction", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          categoryId,
-          title: title.trim(),
-          content: content.trim(),
-          priority,
+          question: warningQuestion.question,
+          conversationId: warningQuestion.conversationId,
+          customMessage: warnCustomerMessage,
+          holdingDisclaimer: holdingDisclaimerText,
+          notifyCustomer: warnNotifyCustomer,
+          enableHolding: warnEnableHolding,
         }),
       });
 
       if (res.ok) {
-        setSuccessMessage("تمت إضافة المقال بنجاح إلى قاعدة المعرفة!");
+        const data = await res.json();
+        setWarnSuccess(data.message || "✅ تم إرسال الإشعار وتفعيل الرد التوقيفي بنجاح!");
+        setQuestions((prev) =>
+          prev.map((q) =>
+            q.question === warningQuestion.question
+              ? {
+                  ...q,
+                  isHeld: warnEnableHolding,
+                  holdingMessage: warnEnableHolding ? holdingDisclaimerText : null,
+                  holdingId: data.holdingId || q.holdingId,
+                }
+              : q
+          )
+        );
+        setTimeout(() => {
+          setWarningQuestion(null);
+          setWarnSuccess("");
+        }, 1600);
+      } else {
+        const err = await res.json().catch(() => ({ error: "فشل الإرسال" }));
+        alert(err.error || "فشل إرسال الإشعار وتفعيل التجميد");
+      }
+    } catch (err) {
+      console.error("Failed to send warning & hold:", err);
+      alert("حدث خطأ أثناء الاتصال بالخادم");
+    } finally {
+      setWarnSubmitting(false);
+    }
+  }
+
+  async function handleLiftHold() {
+    if (!warningQuestion) return;
+    if (!confirm("هل أنت متأكد من رغبتك في رفع التعليق وإلغاء الرد التوقيفي لهذا السؤال؟")) return;
+
+    setWarnLifting(true);
+    try {
+      const res = await fetch("/api/knowledge/unanswered/warn-correction", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: warningQuestion.question,
+          holdingId: warningQuestion.holdingId,
+        }),
+      });
+
+      if (res.ok) {
+        setQuestions((prev) =>
+          prev.map((q) =>
+            q.question === warningQuestion.question
+              ? { ...q, isHeld: false, holdingMessage: null, holdingId: null }
+              : q
+          )
+        );
+        setWarningQuestion(null);
+      } else {
+        alert("تعذر رفع التعليق");
+      }
+    } catch (err) {
+      console.error("Failed to lift hold:", err);
+    } finally {
+      setWarnLifting(false);
+    }
+  }
+
+  async function handleSaveKnowledgeEntry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedQuestion || !title.trim() || !content.trim() || !categoryId) return;
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/knowledge/unanswered/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: selectedQuestion.question,
+          title: title.trim(),
+          content: content.trim(),
+          categoryId,
+          priority,
+          conversationId: selectedQuestion.conversationId,
+          notifyUser: notifyWhatsApp,
+        }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.userNotified) {
+          setSuccessMessage("✅ تم حفظ المقال في قاعدة المعرفة وإرسال الإشعار للمنخرط عبر واتساب بنجاح! 🕊️");
+        } else {
+          setSuccessMessage("✅ تمت إضافة المقال بنجاح إلى قاعدة المعرفة!");
+        }
+
+        const answeredQuestion = selectedQuestion.question;
         setTimeout(() => {
           setSelectedQuestion(null);
           setSuccessMessage("");
-          void fetchData();
-        }, 1200);
+          setQuestions((prev) => prev.filter((q) => q.question !== answeredQuestion));
+          setSelectedQuestions((prev) => {
+            const next = new Set(prev);
+            next.delete(answeredQuestion);
+            return next;
+          });
+        }, 1500);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || "تعذر حفظ المقال");
       }
     } catch (err) {
       console.error("Failed to add entry:", err);
@@ -143,22 +512,87 @@ export default function UnansweredQuestionsPage() {
     }
   }
 
-  const filtered = questions.filter((item) => {
-    const matchesSearch =
-      item.question.toLowerCase().includes(search.toLowerCase()) ||
-      item.customerName.toLowerCase().includes(search.toLowerCase());
-    const matchesChannel =
-      channelFilter === "all" || item.channels.includes(channelFilter);
-    return matchesSearch && matchesChannel;
-  });
+  const filtered = questions
+    .filter((item) => {
+      const matchesSearch =
+        item.question.toLowerCase().includes(search.toLowerCase()) ||
+        item.customerName.toLowerCase().includes(search.toLowerCase()) ||
+        (item.customerContact && item.customerContact.toLowerCase().includes(search.toLowerCase()));
+
+      const matchesChannel =
+        channelFilter === "all" || item.channels.includes(channelFilter);
+
+      // Date filter
+      let matchesDate = true;
+      if (dateFilter !== "all") {
+        const askedDate = new Date(item.lastAskedAt).getTime();
+        const now = Date.now();
+        const diffHours = (now - askedDate) / (1000 * 60 * 60);
+
+        if (dateFilter === "today") {
+          matchesDate = diffHours <= 24;
+        } else if (dateFilter === "week") {
+          matchesDate = diffHours <= 24 * 7;
+        } else if (dateFilter === "month") {
+          matchesDate = diffHours <= 24 * 30;
+        }
+      }
+
+      // Frequency filter (عدد المرات)
+      let matchesFrequency = true;
+      if (frequencyFilter === "multiple") {
+        matchesFrequency = item.count >= 2;
+      } else if (frequencyFilter === "high") {
+        matchesFrequency = item.count >= 3;
+      } else if (frequencyFilter === "single") {
+        matchesFrequency = item.count === 1;
+      }
+
+      // Source filter
+      let matchesSource = true;
+      if (sourceFilter !== "all") {
+        if (sourceFilter === "manual") {
+          matchesSource = item.sourceType === "manual";
+        } else if (sourceFilter === "refusal") {
+          matchesSource = item.sourceType === "refusal" || !item.sourceType;
+        } else if (sourceFilter === "feedback") {
+          matchesSource = item.sourceType === "feedback";
+        }
+      }
+
+      return matchesSearch && matchesChannel && matchesDate && matchesFrequency && matchesSource;
+    })
+    .sort((a, b) => {
+      if (sortBy === "count-desc") {
+        return b.count - a.count || new Date(b.lastAskedAt).getTime() - new Date(a.lastAskedAt).getTime();
+      }
+      if (sortBy === "count-asc") {
+        return a.count - b.count || new Date(b.lastAskedAt).getTime() - new Date(a.lastAskedAt).getTime();
+      }
+      if (sortBy === "date-desc") {
+        return new Date(b.lastAskedAt).getTime() - new Date(a.lastAskedAt).getTime();
+      }
+      if (sortBy === "date-asc") {
+        return new Date(a.lastAskedAt).getTime() - new Date(b.lastAskedAt).getTime();
+      }
+      return 0;
+    });
 
   const totalOccurrences = questions.reduce((sum, q) => sum + q.count, 0);
+  const isAllSelected = filtered.length > 0 && selectedQuestions.size === filtered.length;
+  const hasActiveFilters =
+    dateFilter !== "all" ||
+    frequencyFilter !== "all" ||
+    sourceFilter !== "all" ||
+    channelFilter !== "all" ||
+    search !== "" ||
+    sortBy !== "count-desc";
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-owly-bg">
       <Header
         title="الأسئلة غير المجابة (Knowledge Gaps)"
-        description="استكشف الأسئلة التي لم يجد لها المساعد الذكي إجابة دقيقة، وأضف إجاباتها لتعزيز قاعدة المعرفة"
+        description="استكشف الأسئلة التي لم يجد لها المساعد الذكي إجابة، أعد اختبارها بعد تحديث قاعدة المعرفة أو ولّد إجاباتها واحذف المكرر بضغطة زر"
       />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -169,8 +603,15 @@ export default function UnansweredQuestionsPage() {
               <HelpCircle className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs text-owly-text-light font-medium">أسئلة فريدة بدون جواب</p>
-              <h3 className="text-2xl font-bold text-owly-text mt-0.5">{questions.length}</h3>
+              <p className="text-xs text-owly-text-light font-medium">أسئلة فريدة تحتاج تدقيقاً</p>
+              <h3 className="text-2xl font-bold text-owly-text mt-0.5">
+                {filtered.length}
+                {filtered.length !== questions.length && (
+                  <span className="text-xs font-normal text-owly-text-light mr-1.5">
+                    من أصل {questions.length}
+                  </span>
+                )}
+              </h3>
             </div>
           </div>
 
@@ -179,7 +620,7 @@ export default function UnansweredQuestionsPage() {
               <MessageSquare className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs text-owly-text-light font-medium">إجمالي مرات التكرار</p>
+              <p className="text-xs text-owly-text-light font-medium">إجمالي التكرار للمنخرطين</p>
               <h3 className="text-2xl font-bold text-owly-text mt-0.5">{totalOccurrences}</h3>
             </div>
           </div>
@@ -189,147 +630,521 @@ export default function UnansweredQuestionsPage() {
               <Sparkles className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs text-owly-text-light font-medium">فرص التحسين المتاحة</p>
+              <p className="text-xs text-owly-text-light font-medium">حالة التغطية وسرعة الرد</p>
               <h3 className="text-2xl font-bold text-emerald-600 mt-0.5">
-                {questions.length > 0 ? "مطلوبة" : "مكتملة ✨"}
+                {questions.length > 0 ? "إعادة فحص + توليد متوفر ✨" : "مكتملة 100% 🕊️"}
               </h3>
             </div>
           </div>
         </div>
 
-        {/* Toolbar (Search & Filter) */}
-        <div className="bg-owly-surface border border-owly-border rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-center justify-between shadow-sm">
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-owly-text-light" />
-            <input
-              type="text"
-              placeholder="البحث في الأسئلة..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm bg-owly-bg border border-owly-border rounded-lg outline-none focus:border-owly-primary transition text-owly-text placeholder:text-owly-text-light"
-            />
+        {/* Toolbar & Multi-Criteria Filters */}
+        <div className="bg-owly-surface border border-owly-border rounded-xl p-4 space-y-3 shadow-sm">
+          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-owly-text-light" />
+              <input
+                type="text"
+                placeholder="البحث في الأسئلة أو اسم المنخرط..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-sm bg-owly-bg border border-owly-border rounded-lg outline-none focus:border-owly-primary transition text-owly-text placeholder:text-owly-text-light"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+              <select
+                value={channelFilter}
+                onChange={(e) => setChannelFilter(e.target.value)}
+                aria-label="Filtrer par canal"
+                className="px-3 py-2 text-sm bg-owly-bg border border-owly-border rounded-lg outline-none text-owly-text"
+              >
+                <option value="all">جميع القنوات (Channels)</option>
+                <option value="web">Web Chat</option>
+                <option value="telegram">Telegram</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+
+              {hasActiveFilters && (
+                <button
+                  onClick={() => {
+                    setSearch("");
+                    setChannelFilter("all");
+                    setDateFilter("all");
+                    setFrequencyFilter("all");
+                    setSourceFilter("all");
+                    setSortBy("count-desc");
+                  }}
+                  className="px-2.5 py-2 text-xs font-medium text-owly-text-light hover:text-owly-text border border-owly-border rounded-lg hover:bg-owly-bg transition"
+                  title="إلغاء كل الفلاتر"
+                >
+                  إعادة ضبط
+                </button>
+              )}
+
+              <button
+                onClick={() => void fetchData()}
+                disabled={loading}
+                className="p-2 border border-owly-border hover:bg-owly-bg rounded-lg text-owly-text transition"
+                title="تحديث"
+              >
+                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <select
-              value={channelFilter}
-              onChange={(e) => setChannelFilter(e.target.value)}
-              aria-label="Filtrer par canal"
-              className="px-3 py-2 text-sm bg-owly-bg border border-owly-border rounded-lg outline-none text-owly-text"
-            >
-              <option value="all">جميع القنوات (Channels)</option>
-              <option value="web">Web Chat</option>
-              <option value="telegram">Telegram</option>
-              <option value="whatsapp">WhatsApp</option>
-            </select>
+          {/* Secondary Filters: Date, Frequency, Source, Sort */}
+          <div className="pt-3 border-t border-owly-border grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div>
+              <label className="block text-[11px] font-medium text-owly-text-light mb-1">
+                📅 التاريخ
+              </label>
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                aria-label="Filtrer par date"
+                className="w-full px-2.5 py-1.5 text-xs bg-owly-bg border border-owly-border rounded-lg outline-none text-owly-text focus:border-owly-primary transition"
+              >
+                <option value="all">كل التواريخ (All)</option>
+                <option value="today">اليوم (آخر 24 ساعة)</option>
+                <option value="week">آخر 7 أيام</option>
+                <option value="month">آخر 30 يوماً</option>
+              </select>
+            </div>
 
-            <button
-              onClick={() => void fetchData()}
-              disabled={loading}
-              className="p-2 border border-owly-border hover:bg-owly-bg rounded-lg text-owly-text transition"
-              title="تحديث"
-            >
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            </button>
+            <div>
+              <label className="block text-[11px] font-medium text-owly-text-light mb-1">
+                🔢 عدد المرات (التكرار)
+              </label>
+              <select
+                value={frequencyFilter}
+                onChange={(e) => setFrequencyFilter(e.target.value)}
+                aria-label="Filtrer par fréquence"
+                className="w-full px-2.5 py-1.5 text-xs bg-owly-bg border border-owly-border rounded-lg outline-none text-owly-text focus:border-owly-primary transition"
+              >
+                <option value="all">كل التكرارات (All)</option>
+                <option value="multiple">مكرر (≥ 2 مرات)</option>
+                <option value="high">شديد التكرار (≥ 3 مرات)</option>
+                <option value="single">مرة واحدة فقط (1)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-owly-text-light mb-1">
+                🏷️ نوع ومصدر الرصد
+              </label>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                aria-label="Filtrer par source"
+                className="w-full px-2.5 py-1.5 text-xs bg-owly-bg border border-owly-border rounded-lg outline-none text-owly-text focus:border-owly-primary transition"
+              >
+                <option value="all">كل المصادر (All)</option>
+                <option value="manual">✍️ تحويل يدوي فقط</option>
+                <option value="refusal">🤖 غياب معلومة تلقائي</option>
+                <option value="feedback">👎 تقييم سلبي من المنخرط</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-owly-text-light mb-1">
+                ↕️ الترتيب
+              </label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                aria-label="Trier par"
+                className="w-full px-2.5 py-1.5 text-xs bg-owly-bg border border-owly-border rounded-lg outline-none text-owly-text focus:border-owly-primary transition"
+              >
+                <option value="count-desc">الأكثر تكراراً أولاً</option>
+                <option value="date-desc">الأحدث تاريخاً أولاً</option>
+                <option value="date-asc">الأقدم تاريخاً أولاً</option>
+                <option value="count-asc">الأقل تكراراً</option>
+              </select>
+            </div>
           </div>
+
+          {/* Bulk Selection Action Bar */}
+          {selectedQuestions.size > 0 && (
+            <div className="pt-2 border-t border-owly-border flex items-center justify-between bg-red-500/5 px-3 py-2 rounded-lg border border-red-200">
+              <div className="flex items-center gap-2 text-xs font-bold text-owly-text">
+                <CheckSquare className="h-4 w-4 text-owly-primary" />
+                <span>تم تحديد ({selectedQuestions.size}) أسئلة</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedQuestions(new Set())}
+                  className="px-2.5 py-1 text-xs text-owly-text-light hover:text-owly-text font-medium"
+                >
+                  إلغاء التحديد
+                </button>
+                <button
+                  onClick={() => void handleBulkDelete()}
+                  disabled={bulkDeleting}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition disabled:opacity-50"
+                >
+                  {bulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  <span>حذف المحدد في دفعة واحدة ({selectedQuestions.size})</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Questions List */}
         <div className="bg-owly-surface border border-owly-border rounded-xl overflow-hidden shadow-sm">
+          {/* Header Row with Select All */}
+          {filtered.length > 0 && (
+            <div className="p-3 px-4 sm:px-5 bg-owly-bg border-b border-owly-border flex items-center justify-between text-xs font-bold text-owly-text-light">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-1.5 hover:text-owly-text transition"
+                >
+                  {isAllSelected ? (
+                    <CheckSquare className="h-4 w-4 text-owly-primary" />
+                  ) : (
+                    <Square className="h-4 w-4 text-owly-text-light" />
+                  )}
+                  <span>{isAllSelected ? "إلغاء تحديد الكل" : "تحديد الكل"}</span>
+                </button>
+                <span>({filtered.length} سؤال متاح)</span>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="py-16 flex flex-col items-center justify-center gap-3">
               <Loader2 className="h-7 w-7 animate-spin text-owly-primary" />
-              <p className="text-sm text-owly-text-light">جاري استخراج الأسئلة غير المجابة...</p>
+              <p className="text-sm text-owly-text-light">جاري استخراج وتصفية الأسئلة غير المجابة...</p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="py-16 text-center px-4">
-              <HelpCircle className="h-12 w-12 mx-auto mb-3 text-owly-text-light opacity-30" />
-              <h4 className="text-base font-semibold text-owly-text">لا توجد أسئلة بدون إجابة</h4>
+              <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-emerald-500 opacity-60" />
+              <h4 className="text-base font-semibold text-owly-text">لا توجد أسئلة معلقة بدون جواب</h4>
               <p className="text-xs text-owly-text-light mt-1 max-w-sm mx-auto">
-                ممتاز! جميع الأسئلة المطروحة حتى الآن تمت معالجتها وإيجاد إجابات لها في قاعدة المعرفة.
+                ممتاز! جميع الأسئلة المطروحة تمت معالجتها بدقة وتصفيتها من التحيات والعبارات المتكررة.
               </p>
             </div>
           ) : (
             <div className="divide-y divide-owly-border">
-              {filtered.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="p-4 sm:p-5 hover:bg-owly-bg/50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                >
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-base text-owly-text break-words">
-                        {item.question}
-                      </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                        {item.count} {item.count > 1 ? "مرات" : "مرة"}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-xs text-owly-text-light flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Radio className="h-3.5 w-3.5" />
-                        {item.channels.join(", ")}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5" />
-                        آخر سؤال: {new Date(item.lastAskedAt).toLocaleDateString("fr-FR", {
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      <Link
-                        href={`/conversations?id=${item.conversationId}`}
-                        className="text-owly-primary hover:underline"
-                      >
-                        عرض المحادثة
-                      </Link>
-                    </div>
-
-                    {item.lastResponse && (
-                      <p className="text-xs text-owly-text-light/80 line-clamp-1 italic bg-owly-bg px-2.5 py-1 rounded border border-owly-border/50 mt-1">
-                        جواب المساعد: "{item.lastResponse}"
-                      </p>
+              {filtered.map((item, idx) => {
+                const isSelected = selectedQuestions.has(item.question);
+                return (
+                  <div
+                    key={idx}
+                    className={cn(
+                      "p-4 sm:p-5 hover:bg-owly-bg/50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4",
+                      isSelected && "bg-owly-primary/5"
                     )}
-                  </div>
+                  >
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <button
+                        onClick={() => toggleSelectQuestion(item.question)}
+                        className="mt-1 text-owly-text-light hover:text-owly-text transition shrink-0"
+                        title={isSelected ? "إلغاء التحديد" : "تحديد"}
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="h-4 w-4 text-owly-primary" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                      </button>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => openAddToKnowledgeModal(item)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg shadow-sm transition"
-                    >
-                      <BookPlus className="h-4 w-4" />
-                      <span>إضافة إلى قاعدة المعرفة</span>
-                    </button>
-                    <button
-                      onClick={() => void handleDismiss(item)}
-                      disabled={dismissingKey === item.question}
-                      title="حذف / تجاهل هذا السؤال"
-                      className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition disabled:opacity-50"
-                    >
-                      {dismissingKey === item.question
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : <Trash2 className="h-4 w-4" />}
-                    </button>
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-base text-owly-text break-words">
+                            {item.question}
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                            {item.count} {item.count > 1 ? "مرات" : "مرة"}
+                          </span>
+                          {item.sourceType === "manual" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
+                              ✍️ تحويل يدوي
+                            </span>
+                          )}
+                          {item.sourceType === "feedback" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                              👎 تقييم سلبي
+                            </span>
+                          )}
+                          {item.sourceType === "refusal" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                              🤖 غياب معلومة
+                            </span>
+                          )}
+                          {item.customerContact && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {item.customerContact}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4 text-xs text-owly-text-light flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <Radio className="h-3.5 w-3.5" />
+                            {item.channels.join(", ")}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5" />
+                            آخر سؤال: {new Date(item.lastAskedAt).toLocaleDateString("fr-FR", {
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                          {item.conversationId && (
+                            <Link
+                              href={`/conversations?id=${item.conversationId}`}
+                              className="text-owly-primary hover:underline"
+                            >
+                              عرض المحادثة
+                            </Link>
+                          )}
+                        </div>
+
+                        {item.lastResponse && (
+                          <p className="text-xs text-owly-text-light/80 line-clamp-1 italic bg-owly-bg px-2.5 py-1 rounded border border-owly-border/50 mt-1">
+                            جواب المساعد السابق: "{item.lastResponse}"
+                          </p>
+                        )}
+
+                        {item.isHeld && (
+                          <div className="flex items-center gap-2 text-xs bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-lg mt-1.5">
+                            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                            <span className="font-semibold">
+                              ⚠️ معلّق: تم إرسال تنبيه بتصويب الجواب، والرد التوقيفي مفعّل تلقائياً لأي سائل جديد حتى توفر الجواب الرسمي
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap justify-end">
+                      {/* 0. Warning & Holding Button */}
+                      <button
+                        onClick={() => openWarningModal(item)}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg shadow-sm transition border",
+                          item.isHeld
+                            ? "text-amber-900 bg-amber-100 hover:bg-amber-200 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                            : "text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200"
+                        )}
+                        title={
+                          item.isHeld
+                            ? "تعديل إشعار التصويب أو رفع التجميد عن هذا السؤال"
+                            : "إشعار المنخرط بتصويب الجواب الخاطئ وتجميد السؤال برد توقيفي حتى توفر الإجابة الصحيحة"
+                        }
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                        <span>{item.isHeld ? "معلّق (تعديل)" : "تصويب وتجميد"}</span>
+                      </button>
+
+                      {/* 1. Re-check Button against updated Knowledge Base */}
+                      <button
+                        onClick={() => void handleRecheck(item)}
+                        disabled={recheckingKey === item.question}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg shadow-sm transition disabled:opacity-50"
+                        title="إعادة اختبار السؤال الآن ضد قاعدة المعرفة المحدثة لمعرفة إن توفر الجواب"
+                      >
+                        {recheckingKey === item.question ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        )}
+                        <span>إعادة فحص (Re-tester)</span>
+                      </button>
+
+                      {/* 2. 1-Click AI Draft Button */}
+                      <button
+                        onClick={() => void handleGenerateDraft(item)}
+                        disabled={draftingKey === item.question}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 rounded-lg shadow-sm transition disabled:opacity-50"
+                        title="توليد إجابة مقترحة فورية بالذكاء الاصطناعي مع التصنيف التلقائي"
+                      >
+                        {draftingKey === item.question ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        <span>توليد ذكي (IA)</span>
+                      </button>
+
+                      {/* 3. Manual Add Button */}
+                      <button
+                        onClick={() => openAddToKnowledgeModal(item)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-owly-text bg-owly-bg hover:bg-owly-surface border border-owly-border rounded-lg transition"
+                        title="كتابة إجابة يدوية"
+                      >
+                        <BookPlus className="h-3.5 w-3.5 text-owly-primary" />
+                        <span className="hidden sm:inline">يدوي</span>
+                      </button>
+
+                      {/* 4. Dismiss Button */}
+                      <button
+                        onClick={() => void handleDismiss(item)}
+                        disabled={dismissingKey === item.question}
+                        title="حذف / تجاهل هذا السؤال"
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition disabled:opacity-50"
+                      >
+                        {dismissingKey === item.question ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
-      {/* Add to Knowledge Entry Modal */}
-      {selectedQuestion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-owly-surface border border-owly-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      {/* Re-check Result Modal */}
+      {recheckResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-owly-surface border border-owly-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-owly-border flex items-center justify-between bg-owly-bg">
               <div className="flex items-center gap-2">
-                <BookPlus className="h-5 w-5 text-owly-primary" />
+                {recheckResult.hasAnswer ? (
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                )}
                 <h3 className="font-bold text-base text-owly-text">
-                  إضافة إجابة إلى قاعدة المعرفة
+                  {recheckResult.hasAnswer
+                    ? "🎉 تم العثور على إجابة في قاعدة المعرفة المحدثة!"
+                    : "⚠️ لا تتوفر إجابة كافية في قاعدة المعرفة حتى الآن"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setRecheckResult(null)}
+                className="p-1 rounded-lg text-owly-text-light hover:text-owly-text hover:bg-owly-border/40 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="p-3 bg-owly-bg border border-owly-border rounded-xl">
+                <span className="text-[11px] font-bold text-owly-text-light block mb-1">
+                  السؤال الذي تمت إعادة اختباره:
+                </span>
+                <p className="text-sm font-bold text-owly-text">«{recheckResult.question.question}»</p>
+                {recheckResult.question.customerContact && (
+                  <span className="text-xs text-owly-text-light mt-1 block">
+                    المستفسر: {recheckResult.question.customerName} ({recheckResult.question.customerContact})
+                  </span>
+                )}
+              </div>
+
+              {recheckResult.hasAnswer ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-emerald-700 mb-1">
+                      الجواب المستخرج من قاعدة المعرفة المحدثة:
+                    </label>
+                    <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl text-xs text-owly-text leading-6 whitespace-pre-wrap font-normal">
+                      {recheckResult.answer}
+                    </div>
+                  </div>
+
+                  {/* Direct WhatsApp Follow-up Checkbox */}
+                  {recheckResult.question.channels.includes("whatsapp") && recheckResult.question.customerContact && (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        id="recheck-notify-wa"
+                        checked={recheckNotifyWa}
+                        onChange={(e) => setRecheckNotifyWa(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-emerald-600 rounded border-emerald-300 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <label htmlFor="recheck-notify-wa" className="text-xs text-owly-text leading-5 cursor-pointer flex-1">
+                        <span className="font-bold text-emerald-800 block flex items-center gap-1.5">
+                          <Send className="h-3.5 w-3.5" />
+                          إرسال هذا الجواب فوراً للمستفسر عبر واتساب
+                        </span>
+                        <span className="text-owly-text-light text-[11px] block mt-0.5">
+                          سيصل إشعار متابعة رسمي إلى ({recheckResult.question.customerContact}) بالجواب لغلق الاستفسار.
+                        </span>
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="pt-3 flex items-center justify-end gap-2 border-t border-owly-border">
+                    <button
+                      type="button"
+                      onClick={() => setRecheckResult(null)}
+                      className="px-4 py-2 text-xs font-semibold text-owly-text-light hover:text-owly-text rounded-lg transition"
+                    >
+                      إغلاق
+                    </button>
+                    <button
+                      type="button"
+                      disabled={recheckResolving}
+                      onClick={() => void handleApproveRecheckResolution()}
+                      className="px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition disabled:opacity-50 inline-flex items-center gap-1.5"
+                    >
+                      {recheckResolving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                      <span>اعتماد وإغلاق السؤال (حذف من غير المجابة)</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-800 rounded-xl text-xs leading-6">
+                    <p className="font-semibold">{recheckResult.message}</p>
+                    <p className="mt-1 text-owly-text-light">
+                      تم الحفاظ على السؤال في قائمة «الأسئلة غير المجابة». يمكنك استخدام زر «توليد ذكي (IA)» لصياغة مقال جديد وحفظه في قاعدة المعرفة.
+                    </p>
+                  </div>
+
+                  <div className="pt-3 flex items-center justify-end gap-2 border-t border-owly-border">
+                    <button
+                      type="button"
+                      onClick={() => setRecheckResult(null)}
+                      className="px-4 py-2 text-xs font-semibold text-owly-text-light hover:text-owly-text rounded-lg transition"
+                    >
+                      حسناً، إبقاء السؤال معلقاً
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = recheckResult.question;
+                        setRecheckResult(null);
+                        void handleGenerateDraft(target);
+                      }}
+                      className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition inline-flex items-center gap-1.5"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      <span>توليد إجابة ذكية بالـ IA الآن</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Approve Knowledge Entry Modal */}
+      {selectedQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-owly-surface border border-owly-border rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-owly-border flex items-center justify-between bg-owly-bg">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-amber-600" />
+                <h3 className="font-bold text-base text-owly-text">
+                  اعتماد إجابة السؤال وإضافتها لقاعدة المعرفة
                 </h3>
               </div>
               <button
@@ -340,12 +1155,33 @@ export default function UnansweredQuestionsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveKnowledgeEntry} className="p-6 space-y-4">
+            <form onSubmit={handleSaveKnowledgeEntry} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
               {successMessage && (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 rounded-lg text-sm font-semibold">
-                  {successMessage}
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 rounded-xl text-sm font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <span>{successMessage}</span>
                 </div>
               )}
+
+              {/* Source question box */}
+              <div className="p-3 bg-owly-bg border border-owly-border rounded-xl">
+                <span className="text-[11px] font-bold text-owly-text-light block mb-1">
+                  السؤال المطروح من طرف المنخرط:
+                </span>
+                <p className="text-sm font-bold text-owly-text">«{selectedQuestion.question}»</p>
+                <div className="mt-1 flex items-center justify-between text-xs text-owly-text-light">
+                  <span>المستفسر: {selectedQuestion.customerName} ({selectedQuestion.channels.join(", ")})</span>
+                  <button
+                    type="button"
+                    onClick={() => void handleRegenerateDraft()}
+                    disabled={isGeneratingDraft}
+                    className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 font-semibold hover:underline"
+                  >
+                    <RefreshCw className={cn("h-3 w-3", isGeneratingDraft && "animate-spin")} />
+                    <span>إعادة التوليد بالذكاء الاصطناعي</span>
+                  </button>
+                </div>
+              </div>
 
               <div>
                 <label className="block text-xs font-bold text-owly-text mb-1">
@@ -380,31 +1216,55 @@ export default function UnansweredQuestionsPage() {
 
               <div>
                 <label className="block text-xs font-bold text-owly-text mb-1">
-                  الإجابة والمعلومات الدقيقة (Content)
+                  الإجابة الرسمية المعتمدة (Content)
                 </label>
                 <textarea
-                  rows={5}
+                  rows={6}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="اكتب هنا الإجابة التفصيلية التي يجب أن يستخدمها الذكاء الاصطناعي..."
-                  className="w-full px-3 py-2 text-sm bg-owly-bg border border-owly-border rounded-lg outline-none focus:border-owly-primary text-owly-text leading-6"
+                  placeholder="اكتب هنا الإجابة أو راجع ما ولّده الذكاء الاصطناعي..."
+                  className="w-full px-3 py-2 text-sm bg-owly-bg border border-owly-border rounded-lg outline-none focus:border-owly-primary text-owly-text leading-6 font-normal"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-owly-text mb-1">
-                  الأولوية (Priority)
-                </label>
-                <input
-                  type="number"
-                  value={priority}
-                  onChange={(e) => setPriority(Number(e.target.value))}
-                  className="w-24 px-3 py-1.5 text-sm bg-owly-bg border border-owly-border rounded-lg text-owly-text"
-                />
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-owly-text mb-1">
+                    الأولوية في محرك البحث (Priority)
+                  </label>
+                  <input
+                    type="number"
+                    value={priority}
+                    onChange={(e) => setPriority(Number(e.target.value))}
+                    className="w-24 px-3 py-1.5 text-sm bg-owly-bg border border-owly-border rounded-lg text-owly-text"
+                  />
+                </div>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-owly-border">
+              {/* Direct WhatsApp Follow-up Checkbox */}
+              {selectedQuestion.channels.includes("whatsapp") && selectedQuestion.customerContact && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="notify-wa"
+                    checked={notifyWhatsApp}
+                    onChange={(e) => setNotifyWhatsApp(e.target.checked)}
+                    className="mt-1 h-4 w-4 text-emerald-600 rounded border-emerald-300 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <label htmlFor="notify-wa" className="text-xs text-owly-text leading-5 cursor-pointer flex-1">
+                    <span className="font-bold text-emerald-800 block flex items-center gap-1.5">
+                      <Send className="h-3.5 w-3.5" />
+                      إرسال الإجابة فوراً للمستفسر عبر واتساب
+                    </span>
+                    <span className="text-owly-text-light text-[11px] block mt-0.5">
+                      سيصل إشعار متابعة رسمي إلى ({selectedQuestion.customerContact}) متضمناً هذا الجواب لغلق الاستفسار.
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-owly-border">
                 <button
                   type="button"
                   onClick={() => setSelectedQuestion(null)}
@@ -414,14 +1274,182 @@ export default function UnansweredQuestionsPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="px-4 py-2 text-xs font-bold text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg shadow-sm transition disabled:opacity-50 inline-flex items-center gap-1.5"
+                  disabled={saving || isGeneratingDraft}
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-owly-primary hover:bg-owly-primary-dark rounded-xl shadow-md transition disabled:opacity-50 inline-flex items-center gap-1.5"
                 >
-                  {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>حفظ المقال في قاعدة المعرفة</span>
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  <span>حفظ واعتماد الجواب</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Warning & Holding Modal */}
+      {warningQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-owly-surface border border-owly-border rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-owly-border flex items-center justify-between bg-amber-50/50 dark:bg-amber-950/20">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <h3 className="font-bold text-base text-owly-text">
+                  إشعار المنخرط بتصويب الجواب وتجميد الاستفسار
+                </h3>
+              </div>
+              <button
+                onClick={() => setWarningQuestion(null)}
+                className="p-1 rounded-lg text-owly-text-light hover:text-owly-text hover:bg-owly-border/40 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {warnSuccess ? (
+              <div className="p-8 text-center space-y-3">
+                <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto animate-bounce" />
+                <p className="text-base font-bold text-owly-text">{warnSuccess}</p>
+              </div>
+            ) : (
+              <form onSubmit={handleSendWarningAndHold} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                {/* Target Question & Customer Info */}
+                <div className="p-3 bg-owly-bg border border-owly-border rounded-xl space-y-1">
+                  <span className="text-[11px] font-bold text-owly-text-light block">
+                    السؤال المعني بالتصويب:
+                  </span>
+                  <p className="text-sm font-bold text-owly-text">«{warningQuestion.question}»</p>
+                  <div className="flex items-center gap-3 pt-1 text-xs text-owly-text-light">
+                    <span>
+                      المستفسر: <strong className="text-owly-text">{warningQuestion.customerName}</strong>
+                    </span>
+                    {warningQuestion.customerContact && (
+                      <span>
+                        الجهة/الهاتف: <span dir="ltr" className="font-mono">{warningQuestion.customerContact}</span>
+                      </span>
+                    )}
+                    <span className="px-1.5 py-0.5 rounded bg-owly-surface border border-owly-border text-[11px]">
+                      {warningQuestion.channels.join(", ")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Outbound Warning Message to Customer */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-owly-text">
+                      1. الرسالة التنبيهية التي ستصل للمنخرط (قابلة للتعديل):
+                    </label>
+                    <span className="text-[11px] text-owly-text-light">اعتذار وتوضيح أن الجواب غير دقيق</span>
+                  </div>
+                  <textarea
+                    rows={6}
+                    value={warnCustomerMessage}
+                    onChange={(e) => setWarnCustomerMessage(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-owly-bg border border-owly-border rounded-xl outline-none focus:border-amber-500 text-owly-text leading-5 font-normal"
+                    required
+                  />
+                </div>
+
+                {/* Notify Checkbox */}
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="warn-notify-cust"
+                    checked={warnNotifyCustomer}
+                    onChange={(e) => setWarnNotifyCustomer(e.target.checked)}
+                    className="mt-1 h-4 w-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <label htmlFor="warn-notify-cust" className="text-xs text-owly-text leading-5 cursor-pointer flex-1">
+                    <span className="font-bold text-amber-800 dark:text-amber-300 block flex items-center gap-1.5">
+                      <Send className="h-3.5 w-3.5" />
+                      إرسال هذا الإشعار للمنخرط فوراً عبر {warningQuestion.channels.includes("whatsapp") ? "واتساب" : warningQuestion.channels.includes("telegram") ? "تيليغرام" : "المحادثة"}
+                    </span>
+                    <span className="text-owly-text-light text-[11px] block mt-0.5">
+                      سيتم إرسال التنبيه مباشرة وتسجيله في المحادثة ليعلم المنخرط بعدم الأخذ بالإجابة السابقة.
+                    </span>
+                  </label>
+                </div>
+
+                {/* Holding Response for Future Inquiries */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-owly-text">
+                      2. الرد التوقيفي التلقائي لأي شخص يطرح نفس السؤال مستقبلاً:
+                    </label>
+                    <span className="text-[11px] text-owly-text-light">يمنع الذكاء الاصطناعي من التأليف</span>
+                  </div>
+                  <textarea
+                    rows={5}
+                    value={holdingDisclaimerText}
+                    onChange={(e) => setHoldingDisclaimerText(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-owly-bg border border-owly-border rounded-xl outline-none focus:border-amber-500 text-owly-text leading-5 font-normal"
+                    required
+                  />
+                </div>
+
+                {/* Enable Holding Checkbox */}
+                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="warn-enable-hold"
+                    checked={warnEnableHolding}
+                    onChange={(e) => setWarnEnableHolding(e.target.checked)}
+                    className="mt-1 h-4 w-4 text-blue-600 rounded border-blue-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <label htmlFor="warn-enable-hold" className="text-xs text-owly-text leading-5 cursor-pointer flex-1">
+                    <span className="font-bold text-blue-800 dark:text-blue-300 block flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      تفعيل اعتراض السؤال والرد التلقائي المعلق على مدار الساعة
+                    </span>
+                    <span className="text-owly-text-light text-[11px] block mt-0.5">
+                      إذا سأل أي شخص نفس هذا السؤال، سيرد عليه المساعد بهذا النص التوقيفي فوراً حتى تغذية المقال الصحيح.
+                    </span>
+                  </label>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="pt-3 flex items-center justify-between gap-2 border-t border-owly-border">
+                  {warningQuestion.isHeld ? (
+                    <button
+                      type="button"
+                      disabled={warnLifting}
+                      onClick={() => void handleLiftHold()}
+                      className="px-3 py-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition disabled:opacity-50"
+                    >
+                      {warnLifting ? "جاري الرفع..." : "رفع التجميد وإلغاء الحظر"}
+                    </button>
+                  ) : (
+                    <div />
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWarningQuestion(null)}
+                      className="px-4 py-2 text-xs font-semibold text-owly-text-light hover:text-owly-text rounded-lg transition"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={warnSubmitting}
+                      className="px-5 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition disabled:opacity-50 inline-flex items-center gap-1.5"
+                    >
+                      {warnSubmitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                      <span>إرسال الإشعار وتفعيل التجميد</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

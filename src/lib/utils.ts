@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDate(date: Date | string): string {
-  return new Date(date).toLocaleDateString("tr-TR", {
+  return new Date(date).toLocaleDateString("fr-FR", {
     year: "numeric",
     month: "short",
     day: "numeric",

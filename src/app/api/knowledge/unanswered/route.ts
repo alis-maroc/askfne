@@ -2,13 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
-import { isAssistantRefusal } from "@/lib/ai/refusal-detector";
+import { isAssistantRefusal, isLegitimateKnowledgeQuestion } from "@/lib/ai/refusal-detector";
 
 function normalizeQuestionKey(text: string): string {
   return text
     .toLowerCase()
     .replace(/[\u064B-\u065F\u0670]/g, "") // remove Arabic tashkeel / diacritics
     .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+function isSystematicMenuOrGreeting(text: string): boolean {
+  if (!text) return false;
+  const t = text.trim();
+  return (
+    t.includes("مرحباً بك الرفيق/ة في المساعد الرقمي") ||
+    t.includes("اكتب سؤالك وسأجيبك فوراً") ||
+    t.includes("1️⃣ 🏢 المكاتب والتنظيم النقابي") ||
+    t.includes("2️⃣ 📜 القانون الأساسي") ||
+    t.includes("مستجدات وبيانات FNE") ||
+    t.includes("هل ترغب في التوصل بآخر البيانات") ||
+    t.includes("الجامعة الوطنية للتعليم FNE 👋") ||
+    t.includes("قائمة الخدمات الرقمية") ||
+    t.includes("رجوع للقائمة الرئيسية")
+  );
 }
 
 export async function GET(request: NextRequest) {
@@ -19,11 +35,10 @@ export async function GET(request: NextRequest) {
     // 1. Fetch conversations with messages
     const conversations = await prisma.conversation.findMany({
       where: {
-        messages: {
-          some: {
-            role: "assistant",
-          },
-        },
+        OR: [
+          { messages: { some: {} } },
+          { status: "escalated" },
+        ],
       },
       select: {
         id: true,
@@ -44,7 +59,7 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: { updatedAt: "desc" },
-      take: 500,
+      take: 1000,
     });
 
     // 2. Fetch negative user feedback ratings (👎)
@@ -67,6 +82,8 @@ export async function GET(request: NextRequest) {
         lastResponse: string;
         conversationId: string;
         customerName: string;
+        customerContact: string | null;
+        sourceType: "manual" | "refusal" | "feedback";
       }
     >();
 
@@ -77,15 +94,79 @@ export async function GET(request: NextRequest) {
         ? (metadata.dismissedQuestions as string[])
         : [];
 
+      // A. Handle conversations manually marked as unanswered by admin
+      const isManual =
+        metadata.isManuallyUnanswered === true ||
+        metadata.isManuallyUnanswered === "true" ||
+        Boolean(metadata.hasUnanswered) ||
+        (Array.isArray(metadata.unansweredQuestions) && metadata.unansweredQuestions.length > 0) ||
+        Boolean(metadata.unansweredQuestion);
+
+      if (isManual) {
+        const rawList: Array<{ question: string; messageId?: string; askedAt?: string }> =
+          Array.isArray(metadata.unansweredQuestions) && metadata.unansweredQuestions.length > 0
+            ? (metadata.unansweredQuestions as Array<{ question: string; messageId?: string; askedAt?: string }>)
+            : metadata.unansweredQuestion
+            ? [{ question: String(metadata.unansweredQuestion), askedAt: String(metadata.unansweredAt || "") }]
+            : [];
+
+        if (rawList.length === 0) {
+          const lastCust = conv.messages
+            .slice()
+            .reverse()
+            .find((m) => (m.role === "customer" || m.role === "user") && m.content && m.content.trim().length >= 2);
+          if (lastCust) {
+            rawList.push({ question: lastCust.content.trim(), askedAt: lastCust.createdAt.toISOString() });
+          }
+        }
+
+        for (const item of rawList) {
+          const manualQ = (item.question || "").trim();
+          if (!manualQ || manualQ.length < 2) continue;
+
+          const normKey = normalizeQuestionKey(manualQ);
+          if (!dismissedList.includes(normKey)) {
+            const existing = unansweredMap.get(normKey);
+            const askedDate = item.askedAt ? new Date(item.askedAt) : conv.updatedAt;
+            if (!existing) {
+              unansweredMap.set(normKey, {
+                question: manualQ,
+                count: 1,
+                channels: new Set([conv.channel || "whatsapp"]),
+                firstAskedAt: askedDate,
+                lastAskedAt: askedDate,
+                lastResponse: "⚠️ تم تحويل هذا السؤال يدوياً من المحادثة للمتابعة واعتماد إجابة.",
+                conversationId: conv.id,
+                customerName: conv.customerName || "منخرط",
+                customerContact: conv.customerContact || null,
+                sourceType: "manual",
+              });
+            } else {
+              existing.count += 1;
+              existing.sourceType = "manual";
+              if (askedDate > existing.lastAskedAt) {
+                existing.lastAskedAt = askedDate;
+              }
+            }
+          }
+        }
+      }
+
+      // B. Scan messages for automatic refusal detection
       const msgs = conv.messages;
+      const seenCustomerMsgIds = new Set<string>();
+
       for (let i = 0; i < msgs.length; i++) {
         const msg = msgs[i];
         if (msg.role === "assistant") {
           const content = msg.content || "";
-          const isRefusal = isAssistantRefusal(content);
 
+          // Skip systematic menu displays or greetings
+          if (isSystematicMenuOrGreeting(content)) continue;
+
+          const isRefusal = isAssistantRefusal(content);
           if (isRefusal) {
-            // Find the preceding customer message
+            // Find the immediately preceding customer message
             let customerMsg = null;
             for (let j = i - 1; j >= 0; j--) {
               if (msgs[j].role === "customer" || msgs[j].role === "user") {
@@ -94,16 +175,14 @@ export async function GET(request: NextRequest) {
               }
             }
 
-            if (customerMsg && customerMsg.content.trim().length > 1) {
+            // Avoid double counting the exact same customer message in this conversation
+            if (customerMsg && !seenCustomerMsgIds.has(customerMsg.id) && isLegitimateKnowledgeQuestion(customerMsg.content)) {
+              seenCustomerMsgIds.add(customerMsg.id);
               const qText = customerMsg.content.trim();
               const normKey = normalizeQuestionKey(qText);
 
-              // If dismissed by admin or is simple navigation choice, ignore
-              if (
-                dismissedList.includes(normKey) ||
-                ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "نعم", "لا", "oui", "non"].includes(qText) ||
-                normKey.length < 3
-              ) {
+              // If dismissed by admin or key too short, ignore
+              if (dismissedList.includes(normKey) || normKey.length < 3) {
                 continue;
               }
 
@@ -116,6 +195,7 @@ export async function GET(request: NextRequest) {
                   existing.lastResponse = content;
                   existing.conversationId = conv.id;
                   existing.customerName = conv.customerName || "زائر";
+                  existing.customerContact = conv.customerContact || existing.customerContact;
                 }
               } else {
                 unansweredMap.set(normKey, {
@@ -127,6 +207,8 @@ export async function GET(request: NextRequest) {
                   lastResponse: content,
                   conversationId: conv.id,
                   customerName: conv.customerName || "زائر",
+                  customerContact: conv.customerContact || null,
+                  sourceType: "refusal",
                 });
               }
             }
@@ -138,7 +220,7 @@ export async function GET(request: NextRequest) {
     // Process negative feedbacks (👎 rated messages by users)
     for (const fb of negativeFeedbacks) {
       const qText = (fb.question || "").trim();
-      if (!qText || qText.length < 3) continue;
+      if (!isLegitimateKnowledgeQuestion(qText)) continue;
 
       const normKey = normalizeQuestionKey(qText);
       const existing = unansweredMap.get(normKey);
@@ -158,15 +240,48 @@ export async function GET(request: NextRequest) {
           lastResponse: "تم التقييم بسلبية من طرف المنخرط (غير كافٍ 👎)",
           conversationId: fb.conversationId || "",
           customerName: "منخرط",
+          customerContact: null,
+          sourceType: "feedback",
         });
       }
     }
 
+    // Query active holding disclaimers to mark questions currently on hold
+    const activeHoldings = await prisma.cannedResponse.findMany({
+      where: {
+        category: "unanswered_holding",
+        isActive: true,
+      },
+      select: {
+        id: true,
+        title: true,
+        shortcut: true,
+        content: true,
+        updatedAt: true,
+      },
+    });
+
     const results = Array.from(unansweredMap.values())
-      .map((item) => ({
-        ...item,
-        channels: Array.from(item.channels),
-      }))
+      .map((item) => {
+        const itemNormKey = normalizeQuestionKey(item.question);
+        const matchingHold = activeHoldings.find((h) => {
+          const hNormKey = normalizeQuestionKey(h.title);
+          return (
+            h.shortcut === `holding:${itemNormKey}` ||
+            itemNormKey === hNormKey ||
+            (hNormKey.length >= 8 && (itemNormKey.includes(hNormKey) || hNormKey.includes(itemNormKey)))
+          );
+        });
+
+        return {
+          ...item,
+          channels: Array.from(item.channels),
+          isHeld: Boolean(matchingHold),
+          holdingId: matchingHold?.id || null,
+          holdingMessage: matchingHold?.content || null,
+          holdingUpdatedAt: matchingHold?.updatedAt || null,
+        };
+      })
       .sort((a, b) => b.count - a.count || b.lastAskedAt.getTime() - a.lastAskedAt.getTime());
 
     return NextResponse.json({
@@ -187,15 +302,21 @@ export async function DELETE(request: NextRequest) {
   if (!isAuthenticated(auth)) return auth;
 
   try {
-    const { question, conversationId } = await request.json();
-    if (!question) {
-      return NextResponse.json({ error: "Question is required" }, { status: 400 });
+    const body = await request.json();
+    const { question, questions, all, conversationId } = body;
+
+    let targetQuestions: string[] = [];
+    if (Array.isArray(questions) && questions.length > 0) {
+      targetQuestions = questions;
+    } else if (question) {
+      targetQuestions = [question];
+    } else if (!all) {
+      return NextResponse.json({ error: "Questions are required" }, { status: 400 });
     }
 
-    const normKey = normalizeQuestionKey(question);
+    const normKeys = targetQuestions.map((q) => normalizeQuestionKey(q));
 
-    // If conversationId is provided, dismiss in that conversation, or across all conversations
-    if (conversationId) {
+    if (conversationId && normKeys.length === 1) {
       const conv = await prisma.conversation.findUnique({
         where: { id: conversationId },
         select: { metadata: true },
@@ -205,25 +326,40 @@ export async function DELETE(request: NextRequest) {
         const dismissed = Array.isArray(metadata.dismissedQuestions)
           ? (metadata.dismissedQuestions as string[])
           : [];
-        if (!dismissed.includes(normKey)) {
-          dismissed.push(normKey);
+        for (const k of normKeys) {
+          if (!dismissed.includes(k)) dismissed.push(k);
         }
+
+        const rawList = Array.isArray(metadata.unansweredQuestions)
+          ? (metadata.unansweredQuestions as Array<{ question: string }>)
+          : [];
+        const remainingList = rawList.filter(
+          (item) => !normKeys.includes(normalizeQuestionKey(item.question))
+        );
+
         await prisma.conversation.update({
           where: { id: conversationId },
-          data: { metadata: { ...metadata, dismissedQuestions: dismissed } },
+          data: {
+            metadata: {
+              ...metadata,
+              dismissedQuestions: dismissed,
+              unansweredQuestions: remainingList,
+              isManuallyUnanswered: remainingList.length > 0,
+            },
+          },
         });
       }
     } else {
-      // Find all conversations containing this question
+      // Find conversations with assistant messages or marked as manually unanswered
       const convs = await prisma.conversation.findMany({
         where: {
-          messages: {
-            some: {
-              content: { contains: question },
-            },
-          },
+          OR: [
+            { messages: { some: { role: "assistant" } } },
+            { metadata: { path: ["isManuallyUnanswered"], equals: true } },
+          ],
         },
         select: { id: true, metadata: true },
+        take: 500,
       });
 
       for (const conv of convs) {
@@ -231,21 +367,47 @@ export async function DELETE(request: NextRequest) {
         const dismissed = Array.isArray(metadata.dismissedQuestions)
           ? (metadata.dismissedQuestions as string[])
           : [];
-        if (!dismissed.includes(normKey)) {
-          dismissed.push(normKey);
+        let modified = false;
+
+        for (const k of normKeys) {
+          if (!dismissed.includes(k)) {
+            dismissed.push(k);
+            modified = true;
+          }
         }
-        await prisma.conversation.update({
-          where: { id: conv.id },
-          data: { metadata: { ...metadata, dismissedQuestions: dismissed } },
-        });
+
+        const isManual = metadata.isManuallyUnanswered === true;
+        const rawList = Array.isArray(metadata.unansweredQuestions)
+          ? (metadata.unansweredQuestions as Array<{ question: string }>)
+          : [];
+        const remainingList = all
+          ? []
+          : rawList.filter((item) => !normKeys.includes(normalizeQuestionKey(item.question)));
+
+        const shouldUpdateManual = isManual && (all || rawList.length !== remainingList.length);
+
+        if (modified || shouldUpdateManual) {
+          await prisma.conversation.update({
+            where: { id: conv.id },
+            data: {
+              metadata: {
+                ...metadata,
+                dismissedQuestions: dismissed,
+                unansweredQuestions: remainingList,
+                isManuallyUnanswered: remainingList.length > 0,
+              } as any,
+            },
+          });
+        }
       }
     }
 
-    return NextResponse.json({ success: true });
+
+    return NextResponse.json({ success: true, count: targetQuestions.length });
   } catch (error) {
-    logger.error("Failed to dismiss unanswered question:", error);
+    logger.error("Failed to dismiss unanswered question(s):", error);
     return NextResponse.json(
-      { error: "Failed to dismiss question" },
+      { error: "Failed to dismiss question(s)" },
       { status: 500 }
     );
   }

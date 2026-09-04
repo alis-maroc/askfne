@@ -1,4 +1,4 @@
-موقف الجامعة من الحراك التعليمي/**
+/**
  * Unit tests for the AGENTS.md compliance modules:
  *   - src/lib/ai/freshness.ts
  *   - src/lib/ai/observability.ts

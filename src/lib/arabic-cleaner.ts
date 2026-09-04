@@ -25,39 +25,142 @@ const BIDI_CONTROLS = /[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 function fixBrokenJoining(text: string): string {
     let s = text;
 
-    // Specific MEN circular patterns (apply in order, specific first)
-    s = s.replace(/بالغ/g, "بلاغ");                   // "بلاغ صحفي"
-    s = s.replace(/الرتبية/g, "التربية");            // وزارة التربية الوطنية
-    s = s.replace(/املعطيات/g, "المعطيات");
-    s = s.replace(/املادية/g, "المادية");
-    s = s.replace(/املوقع/g, "الموقع");
-    s = s.replace(/االلكرتوين/g, "والكرتوين");       // كلمة "الكرتوين"
-    s = s.replace(/املالحظات/g, "الملاحظات");
-    s = s.replace(/وامللاحظات/g, "والملاحظات");
+    // Fix inverted / corrupt prefixes common in Moroccan administration fonts (Alef-Mim-Lam glyph bug)
+    // At word boundary: امل -> الم (e.g. املديرية -> المديرية, املعدلة -> المعدلة, املنتصر -> المنتصر)
+    s = s.replace(/(^|[\s\(\[\{«"'\-])وامل(?=[\u0621-\u064a])/g, "$1والم");
+    s = s.replace(/(^|[\s\(\[\{«"'\-])امل(?=[\u0621-\u064a])/g, "$1الم");
+    s = s.replace(/(^|[\s\(\[\{«"'\-])بامل(?=[\u0621-\u064a])/g, "$1بالم");
+    s = s.replace(/(^|[\s\(\[\{«"'\-])للامل(?=[\u0621-\u064a])/g, "$1للم");
 
-    // Generic Alef-Lam fixes (apply after specifics)
-    s = s.replace(/وامل/g, "وال");                   // Waw+Alef+Lam
-    s = s.replace(/واملال/g, "والمل");               // Waw+Alef+Mim+Alef+Lam
-    s = s.replace(/اامل(?=[^\u064b-\u065f\u0670\s\n])/g, "ال"); // Mim+Alef+Lam
+    // Specific MEN circular patterns & OCR typos in administrative Moroccan documents
+    s = s.replace(/بالغ\s+صحفي/g, "بلاغ صحفي");
+    s = s.replace(/الرتبية/g, "التربية");            // وزارة التربية الوطنية
+    s = s.replace(/االلكرتوين/g, "والإلكتروني");
+    s = s.replace(/اإللكتروني/g, "الإلكتروني");
+    s = s.replace(/اإلنتقالية/g, "الانتقالية");
+    s = s.replace(/المملكة\s+المغريية/g, "المملكة المغربية");
+    s = s.replace(/وزلرة\s+التربية/g, "وزارة التربية");
+    s = s.replace(/وزارة\s+a\s+الوطنية/g, "وزارة التربية الوطنية");
+    s = s.replace(/التربية\s+الوضمنية/g, "التربية الوطنية");
+    s = s.replace(/والتعليم\s+9\s+والرياضة/g, "والتعليم الأولي والرياضة");
+    s = s.replace(/والتعلم\s+الأولي/g, "والتعليم الأولي");
+    s = s.replace(/والتعلم\s+JM/g, "والتعليم الأولي");
+    s = s.replace(/المديرّين/g, "المديرين");
+    s = s.replace(/الأطرالعليا/g, "الأطر العليا");
+    s = s.replace(/أعلاد/g, "أعلاه");
+    s = s.replace(/لبيئة/g, "لهيئة");
+    s = s.replace(/\baies\b/g, "خصص");
+    s = s.replace(/المطلوية/g, "المطلوبة");
+    s = s.replace(/تكتسهها/g, "تكتسيها");
+    s = s.replace(/الترشيج/g, "الترشيح");
+    s = s.replace(/\bcils\b/g, "ملف");
+    s = s.replace(/الأسامسي/g, "الأساسي");
+    s = s.replace(/\btés\b/g, "منه");
+
     // Double-alef from bidi extraction: insert the missing Alef to restore natural "ال" article
-    // e.g. "االستشارات" -> "الاستشارات" (not "الستشارات")
-    s = s.replace(/اال(?=[\u0600-\u06ff])/g, "الا");
+    // e.g. "االستشارات" -> "الاستشارات"
+    s = s.replace(/(^|[\s\(\[\{«"'\-])اال(?=[\u0621-\u064a])/g, "$1الا");
 
     // Compound alif forms
     s = s.replace(/األ/g, "الأ");
     s = s.replace(/اإل/g, "الإ");
     s = s.replace(/اآل/g, "الآ");
 
-    // "املال" → "ال" (Alef+Mim+Alef+Lam — "المل...")
-    s = s.replace(/املال(?=[^\u064b-\u065f\s\n])/g, "ال");
-
-    // "اما" → "ال" before diacritics (Alif+Mim+Alef with tashkil)
-    s = s.replace(/اما(?=[\u064b-\u065f\u0670])/g, "ال");
-
     // Remove Tatweel/Kashida
     s = s.replace(/\u0640/g, "");
 
     return s;
+}
+
+/**
+ * Clean OCR noise, garbled ministerial logos, repeated footers, and noisy table annexes.
+ */
+function cleanOcrNoise(text: string): string {
+    let lines = text.split("\n").map((l) => l.trim());
+
+    // 1. Remove initial logo/crest garbage (lines before title/greeting that have high symbol ratio or Tifinagh OCR noise)
+    const filteredLines: string[] = [];
+    let passedPreamble = false;
+
+    for (const line of lines) {
+        if (!passedPreamble) {
+            // Check if we hit the actual start of official content
+            if (
+                line.includes("المملكة المغربية") ||
+                line.includes("وزارة التربية") ||
+                line.includes("الموضوع:") ||
+                line.includes("السيدات والسادة") ||
+                line.includes("سلام تام") ||
+                line.includes("بلاغ") ||
+                line.includes("مذكرة")
+            ) {
+                passedPreamble = true;
+                filteredLines.push(line);
+                continue;
+            }
+
+            // Discard lines with garbled symbols or Tifinagh OCR fragments
+            const symbolCount = (line.match(/[+@©|\[\]{}~_=—\-\/\\<>\*]/g) || []).length;
+            const latinCount = (line.match(/[a-zA-Z]/g) || []).length;
+            if (symbolCount > 2 || latinCount > 2 || line.length < 5) {
+                continue; // Skip preamble logo noise like "ليما رار To ————" or "اث /١ ليأ VU إلى"
+            }
+        }
+
+        // Drop repetitive ministerial postal footers
+        if (
+            line.includes("المقر المركزي للوزارة") ||
+            line.includes("باب الرواح - الرباط") ||
+            line.includes("05 37 77") ||
+            line.includes("053777") ||
+            line.match(/^(وزارة\s+التربية\s+الوطنية|المملكة\s+المغربية)[\s\d\+]*$/)
+        ) {
+            continue;
+        }
+
+        // Drop Tifinagh logo noise lines (Latin uppercase characters mixed with symbols)
+        if (
+            line.includes("HoColleO") ||
+            line.includes("CHLLO") ||
+            line.includes("©قعماه") ||
+            line.includes("VU") ||
+            line.match(/^[A-Z\s\+@©|–—]{4,}$/) ||
+            line.match(/^[\u0621-\u064a\s\/\\1-9]{1,10}\s+VU\s+[\u0621-\u064a\s]+$/)
+        ) {
+            continue;
+        }
+
+        // Normalize OCR bullets: convert "M ", "ele M ", "1 ", "*\" ", "” ", "Ÿ " to markdown bullet "• "
+        let cleanedLine = line;
+        cleanedLine = cleanedLine.replace(/^[ \t]*(?:ele\s+M|M|1|4|Ÿ|”|”7|\*["”]|["”«])[ \t]+(?=[\u0621-\u064a])/g, "• ");
+
+        filteredLines.push(cleanedLine);
+    }
+
+    let result = filteredLines.join("\n");
+
+    // 2. Scanned Table Annex Suppression
+    // If the circular body concludes with "والسلام", check if an unreadable scanned table follows it.
+    const salamMatch = result.match(/([\s\S]*?والسلام[\s\.\!]*)([\s\S]*)$/);
+    if (salamMatch) {
+        const body = salamMatch[1].trim();
+        const remainder = salamMatch[2].trim();
+
+        // Check if remainder is a noisy OCR table (contains repeated table keywords, OCR codes, or high noise)
+        const isTableNoise =
+            remainder.includes("توزيع المناصب") ||
+            remainder.includes("183772") ||
+            remainder.includes("27206W") ||
+            remainder.includes("ديداكتيكها") ||
+            (remainder.match(/\b(?:\d{5,}|DER|Lt|PRE|Re|ET|DS)\b/g) || []).length > 5;
+
+        if (isTableNoise) {
+            let annexNotice = "\n\n---\n📋 **ملحق المناصب والتخصصات ومقرات التعيين:**\nيتضمن الملحق المرفق بالمذكرة الوزارية جداول تفصيلية بتوزيع المناصب المتبارى في شأنها ومقرات التعيين ومراكز إجراء المباراة بمؤسسات تكوين الأطر العليا والمراكز الجهوية. يرجى تحميل الوثيقة الرسمية بصيغة PDF المرفقة أعلاه للاطلاع على تفاصيل الجداول بدقة.";
+            result = body + annexNotice;
+        }
+    }
+
+    return result;
 }
 
 /**
@@ -72,10 +175,13 @@ export function cleanArabicExtractedPdf(text: string): string {
     // Step 1: Strip ALL bidi control characters
     s = s.replace(BIDI_CONTROLS, "");
 
-    // Step 2: Fix broken Arabic letter joining
+    // Step 2: Fix broken Arabic letter joining and administration typos
     s = fixBrokenJoining(s);
 
-    // Step 3: Clean whitespace
+    // Step 3: Clean OCR artifacts, bullets, address footers, and table noise
+    s = cleanOcrNoise(s);
+
+    // Step 4: Clean whitespace
     s = s
         .split("\n")
         .map((line) => line.trim())

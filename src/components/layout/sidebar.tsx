@@ -76,6 +76,7 @@ const sections: NavSection[] = [
       { name: "Channels", href: "/channels", icon: Radio },
       { name: "Widget WordPress 💬", href: "/channels/widget", icon: Globe },
       { name: "Diffusion / Campagnes 📢", href: "/campaigns", icon: Megaphone },
+      { name: "منتدى النقاش 💬", href: "/forum", icon: MessageSquare },
       { name: "Webhooks", href: "/webhooks", icon: Webhook },
     ],
   },
