@@ -40,6 +40,20 @@ describe("User-reported anomalies regression tests", () => {
                 treasurer: "",
                 treasurerPhone: "",
             },
+            {
+                id: "office-snep",
+                sourceId: 50,
+                isActive: true,
+                level: "موازي",
+                name: "النقابة الوطنية لأستاذات وأساتذة التعليم الإبتدائي بالمغرب SNEP",
+                region: "وطني",
+                province: "—",
+                parentOffice: "",
+                secretary: "عبد اللطيف مجاهد",
+                secretaryPhone: "0661461180",
+                treasurer: "حميد لبوش",
+                treasurerPhone: "0702075749",
+            },
         ]);
     });
 
@@ -86,5 +100,14 @@ describe("User-reported anomalies regression tests", () => {
         // Action verbs should trigger
         expect(detectRequestIntent("طلب رخصة مرض")).toBe(true);
         expect(detectRequestIntent("نموذج طلب رخصة مرضية")).toBe(true);
+    });
+
+    it("Question 'وضعية مفتشي التخطيط المدمجين طبقا للمادة 76 من النظام الاساسي بالمديرية الإقليمية لوزارة التربية الوطنية' does NOT hijack to SNEP office and routes to QUESTION_GENERALE", async () => {
+        const query = "وضعية مفتشي التخطيط المدمجين طبقا للمادة 76 من النظام الاساسي بالمديرية الإقليمية لوزارة التربية الوطنية";
+        const classification = classifyIntent(query);
+        expect(classification.intent).toBe(INTENT.QUESTION_GENERALE);
+
+        const answer = await buildOfficeDirectAnswer(query);
+        expect(answer).toBeNull();
     });
 });

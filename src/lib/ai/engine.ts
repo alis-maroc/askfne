@@ -39,18 +39,20 @@ import type {
 // Office/role/level stopwords — tokens that should NEVER be used to search the hub
 // (they would match too many offices and cause false positives like "الكاتب الإقليمي" → all 82+ offices)
 const OFFICE_ROLE_STOPWORDS = new Set([
-  "كاتب", "كاتبه", "الكاتب", "كاتبا", "كاتبته", "كاتبته", "كاتبتها",
-  "اقليم", "اقليمي", "الاقليم", "الاقليمي", "اقليمية", "الاقليمية",
-  "جهه", "جهوي", "الجهوي", "جهة", "الجهة", "جهويا", "الجهوية", "الجهوي",
-  "محلي", "المحلي", "محلية", "المحلية", "محليا",
-  "وطني", "الوطني", "وطنية", "الوطنية", "وطنيا",
+  "كاتب", "كاتبه", "الكاتب", "الكاتبه", "كاتبا", "كاتبته", "كاتبتها",
+  "اقليم", "اقليمي", "الاقليم", "الاقليمي", "اقليمية", "الاقليمية", "اقليميه", "الاقليميه",
+  "جهه", "جهوي", "الجهوي", "جهة", "الجهة", "جهويا", "الجهوية", "الجهوي", "الجهويه", "جهويه",
+  "محلي", "المحلي", "محلية", "المحلية", "محليا", "محليه", "المحليه",
+  "وطني", "الوطني", "وطنية", "الوطنية", "وطنيا", "وطنيه", "الوطنيه",
   "مكتب", "المكتب", "مكاتب", "المكاتب", "مكاتبيه", "مكاتبي",
   "فرع", "الفرع", "فروع", "الفروع",
   "هاتف", "الهاتف", "هواتف", "ارقام", "رقم", "الرقم", "نمره", "النمرة", "نمرة", "نمرتها", "اتصال", "تواصل",
-  "مدير", "المدير", "منسق", "المنسق",
-  "مسؤول", "المسؤول", "مسؤولية", "مسؤوليات",
+  "مدير", "المدير", "مديرية", "المديرية", "مديريه", "المديريه", "منسق", "المنسق",
+  "مسؤول", "المسؤول", "مسؤولية", "مسؤوليات", "مسؤوليه",
   "امين", "امينه", "امين المال", "الامين", "الأمين",
-  "شباب", "اتحاد", "تعليم",
+  "شباب", "اتحاد", "تعليم", "التعليم", "تربية", "التربية", "تربيه", "التربيه",
+  "وزارة", "الوزارة", "وزاره", "الوزاره", "قطاع", "القطاع",
+  "نظام", "النظام", "اساسي", "الاساسي", "مادة", "المادة", "ماده", "الماده",
   "fne", "الجامعه", "النقابية", "النقابه", "نقابية", "نقابه",
   "النقابي", "نقابي", "الاتحاد", "الجامعة", "الجامعه",
   "تواصلو", "نتواصل", "اتواصل", "تصل", "اتصل",
@@ -66,17 +68,19 @@ const QUERY_STOPWORDS = new Set([
 
 const CATEGORY_ROUTING_RULES: Array<{ keywords: string[]; categories: string[] }> = [
   {
-    // Organization, offices, and contact routing
+    // Organization, offices, and contact routing (strictly office-scoped, not isolated generic words)
     keywords: [
-      "تنظيم", "التنظيم", "organisation", "organization", "office", "bureau", "مكتب", "المكاتب",
-      "كاتب", "الكاتب", "إقليمي", "الإقليمي", "جهوي", "الجهوي", "محلي", "المحلي", "المكتب الوطني", "المكاتب الوطنية",
-      "تواصل", "اتواصل", "نتواصل", "اتصال", "نتصل", "هاتف", "نمرة", "رقم", "مسؤول", "المسؤول", "المنسق",
-      "شكون", "من هو", "مع من", "فين كاين", "أين يوجد", "مقر", "المقر", "فرع", "الفروع",
+      "المكتب الإقليمي", "المكتب الاقليمي", "مكتب إقليمي", "مكتب اقليمي",
+      "المكتب الجهوي", "مكتب جهوي", "المكتب المحلي", "مكتب محلي",
+      "الكاتب الإقليمي", "الكاتب الاقليمي", "الكاتب الجهوي", "الكاتب المحلي",
+      "المكتب الوطني", "المكاتب الوطنية", "مقر النقابة", "مقرات النقابة", "فروع النقابة",
+      "هاتف المكتب", "رقم الكاتب", "نمرة الكاتب", "أرقام مسؤولي", "هاتف الكاتب", "أمين المال",
+      "organisation", "organization", "office", "bureau",
       // Moroccan Provinces & Cities
       "تيزنيت", "اكادير", "أكادير", "تارودانت", "شتوكة", "انزكان", "إنزكان", "طاطا", "كلميم", "العيون",
       "الداخلة", "بوجدور", "السمارة", "طانطان", "سيدي إفني", "سيدي افني",
       "الرباط", "سلا", "تمارة", "القنيطرة", "الخميسات", "سيدي قاسم", "سيدي سليمان",
-      "الدار البيضاء", "بيضاء", "المحمدية", "النواصر", "مديونة", "الجديدة", "سطات", "برشيد", "بنسليمان", "سيدي بنور",
+      "الدار البيضاء", "المحمدية", "النواصر", "مديونة", "الجديدة", "سطات", "برشيد", "بنسليمان", "سيدي بنور",
       "فاس", "مكناس", "صفرو", "إفران", "افران", "الحاجب", "تاونات", "بولمان", "تازة",
       "طنجة", "تطوان", "العرائش", "شفشاون", "وزان", "المضيق", "الفنيدق", "فحص أنجرة",
       "مراكش", "الحوز", "شيشاوة", "قلعة السراغنة", "الصويرة", "آسفي", "اسفي", "الرحامنة", "اليوسفية",
@@ -99,7 +103,8 @@ const CATEGORY_ROUTING_RULES: Array<{ keywords: string[]; categories: string[] }
   {
     // Legal status routing
     keywords: [
-      "القانون الاساسي", "القانون الأساسي", "النظام الداخلي", "statut", "statuts", "fne",
+      "النظام الأساسي", "النظام الاساسي", "القانون الاساسي", "القانون الأساسي", "النظام الداخلي", "statut", "statuts", "fne",
+      "المادة", "مادة", "المادة 76", "المادة 77", "المادة 78", "إدماج", "ادماج", "مفتش", "مفتشي", "تخطيط", "توجيه",
       "أهداف", "الاهداف", "objectifs",
       "هياكل", "الهياكل", "هيكل", "الهيكل", "هيكلة", "الهيكلة", "أجهزة", "الأجهزة", "اجهزة", "الاجهزة",
       "المؤتمر الوطني", "المجلس الوطني", "اللجنة الإدارية", "اللجنة الادارية"
@@ -653,20 +658,36 @@ export async function buildOfficeDirectAnswer(query: string): Promise<string | n
     return null;
   }
 
+  // General legal, status, administrative, and pedagogical questions must NEVER trigger an office contact
+  if (
+    /(?:المادة|مادة|مرسوم|قرار|وضعية|ترقية|تقاعد|رخصة|مباراة|مفتش|استاذ|أستاذ|نظام\s*اساسي|قانون\s*اساسي)/i.test(normQ) &&
+    !/(?:هاتف|نمرة|أرقام|تواصل مع|اتصال بـ?)/i.test(normQ)
+  ) {
+    return null;
+  }
+
   const intent = classifyQueryIntent(query);
   const isOfficeContact = intent === "office_contact";
 
-  // Detect bureau-type queries BEFORE filtering tokens. A query like "المكتب الاقليمي فاس"
-  // has its only meaningful role tokens ("مكتب", "اقليم") stripped by OFFICE_ROLE_STOPWORDS,
-  // leaving zero city tokens. Without this guard, resolveVerifiedOffice is never reached.
-  const isBureauQuery = /مكتب|كاتب|اقليم|جهوي|محلي|فرع|وطني/i.test(normQ);
+  // Strict bureau query detection: require explicit bureau keywords with modifiers,
+  // NOT isolated words like "اقليم" or "وطني" which appear in "المديرية الإقليمية" or "وزارة التربية الوطنية".
+  const isBureauQuery =
+    /(?:المكتب|مكتب|الكاتب|كاتب|مقرات|مقر|فروع|فرع)\s+(?:الإقليمي|الاقليمي|الجهوي|المحلي|الوطني|النقابي|التنفيذي)/i.test(normQ) ||
+    /(?:الكاتب|امين المال|أمين المال)\s+(?:العام|الإقليمي|الاقليمي|الجهوي|المحلي|الوطني)/i.test(normQ) ||
+    /(?:هاتف|نمرة|أرقام|تواصل مع|اتصال بـ?)\s+(?:المكتب|الكاتب|النقابة|الفرع|المسؤول النقابي|أمين المال|الجامعة)/i.test(normQ);
+
   const tokens = extractQueryTokens(normQ).filter((t) => t.length >= 3);
-  if (tokens.length === 0 && !isBureauQuery) return null;
+  if (tokens.length === 0 && !isBureauQuery && !isOfficeContact) return null;
 
   // Contact details are high-impact data: validate against the official local registry
   // before any fuzzy or remote lookup can return a possibly wrong province.
   const verifiedAnswer = await resolveVerifiedOffice(query, tokens, isOfficeContact);
   if (verifiedAnswer) return verifiedAnswer;
+
+  // If this is not an explicit office contact query, do not continue to remote hub or fallback database scans
+  if (!isOfficeContact && !isBureauQuery) {
+    return null;
+  }
 
 
   // Filter offices to only those matching ALL query tokens.
@@ -870,11 +891,12 @@ export async function buildOfficeDirectAnswer(query: string): Promise<string | n
 
   // NOTE: Levenshtein fuzzy fallback REMOVED - too aggressive, matched "افني" to all "سيدي X" offices
   // Hub (fetchHubOffices) is authoritative and handles proper spelling variants
-  if (ranked.length === 0) {
-    if (isOfficeContact) {
-      return "لم أجد تطابقاً مؤكداً لاسم المكتب أو الإقليم. لتفادي عرض معلومات خاطئة، اكتب الاسم كاملاً أو استعمل قائمة المكاتب.";
-    }
+  if (!isOfficeContact) {
     return null;
+  }
+
+  if (ranked.length === 0) {
+    return "لم أجد تطابقاً مؤكداً لاسم المكتب أو الإقليم. لتفادي عرض معلومات خاطئة، اكتب الاسم كاملاً أو استعمل قائمة المكاتب.";
   }
 
   // Primary matched office
@@ -882,6 +904,19 @@ export async function buildOfficeDirectAnswer(query: string): Promise<string | n
 
   // Parallel structure exact output (SNEP, SNAP, SNASE, SNAM)
   if (top.level === "موازي") {
+    const orgAcronym = (top.name.match(/[A-Z]{4,}/i)?.[0] || "").toLowerCase();
+    const isExplicitParallelQuery =
+      (orgAcronym && normQ.toLowerCase().includes(orgAcronym)) ||
+      normQ.includes("موازي") ||
+      normQ.includes("الابتدائي") ||
+      normQ.includes("المبرزين") ||
+      normQ.includes("التوجيه والتخطيط") ||
+      normQ.includes("الادارة التربوية");
+
+    if (!isExplicitParallelQuery) {
+      return null;
+    }
+
     const lines: string[] = [];
     const provStr = top.province && top.province !== "—" ? ` (${top.province})` : "";
     lines.push(`🏢 *${top.name}${provStr}:*`);
@@ -2301,7 +2336,15 @@ export async function chat(
   });
   emitNewMessage(conversationId, { id: savedUserMsg.id, role: "customer", content: userMessage || "[Empty Message]" });
 
-  const directOfficeAnswer = await buildOfficeDirectAnswer(userMessage);
+  // Contact lookups are strictly gated by detectedIntent and classifyQueryIntent.
+  // A free-form general question must never trigger an office contact lookup or hijack the response.
+  const isContactIntent =
+    detectedIntent === INTENT.CONTACT_BUREAU ||
+    classifyQueryIntent(userMessage) === "office_contact";
+
+  const directOfficeAnswer = isContactIntent
+    ? await buildOfficeDirectAnswer(userMessage)
+    : null;
   const officeSuggestion = directOfficeAnswer?.match(/هل تقصد:\n•\s*([^\n]+)/)?.[1]?.trim() || null;
   if (officeSuggestion) {
     await prisma.conversation.update({
