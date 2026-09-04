@@ -631,30 +631,98 @@ function AISection({
         {data.externalAiEnabled && (
           <div className="mt-4 p-4 rounded-xl bg-owly-surface border border-owly-border space-y-4">
             <FormField
-              label="Groq API Key (Free)"
-              description="Get a free key instantly from console.groq.com. It is stored securely."
+              label="External AI Provider"
+              description="Choose which external AI service to query when knowledge is not found in the internal base."
             >
-              <PasswordInput
-                value={data.externalAiApiKey}
-                onChange={(v) => update("externalAiApiKey", v)}
-                placeholder="gsk_..."
+              <SelectInput
+                value={data.externalAiProvider || "groq"}
+                onChange={(v) => {
+                  update("externalAiProvider", v);
+                  if (v === "gemini") {
+                    update("externalAiModel", "gemini-2.5-flash");
+                  } else if (v === "groq") {
+                    update("externalAiModel", "openai/gpt-oss-120b");
+                  } else if (v === "openai") {
+                    update("externalAiModel", "gpt-4o-mini");
+                  }
+                }}
+                options={[
+                  { value: "groq", label: "Groq Cloud (Fast, Free tier)" },
+                  { value: "gemini", label: "Google Gemini (Recommended for Moroccan Law & Education)" },
+                  { value: "openai", label: "OpenAI (GPT-4o / GPT-4o mini)" },
+                ]}
               />
             </FormField>
 
             <FormField
-              label="Groq Model"
-              description="Recommended: openai/gpt-oss-120b (high performance, excellent Arabic support)."
+              label={
+                data.externalAiProvider === "gemini"
+                  ? "Google Gemini API Key (Free)"
+                  : data.externalAiProvider === "openai"
+                  ? "OpenAI API Key"
+                  : "Groq API Key (Free)"
+              }
+              description={
+                data.externalAiProvider === "gemini"
+                  ? "Get a free key from Google AI Studio (aistudio.google.com). It is stored securely."
+                  : data.externalAiProvider === "openai"
+                  ? "Get a key from platform.openai.com. It is stored securely."
+                  : "Get a free key instantly from console.groq.com. It is stored securely."
+              }
+            >
+              <PasswordInput
+                value={data.externalAiApiKey}
+                onChange={(v) => update("externalAiApiKey", v)}
+                placeholder={
+                  data.externalAiProvider === "gemini"
+                    ? "AIzaSy..."
+                    : data.externalAiProvider === "openai"
+                    ? "sk-..."
+                    : "gsk_..."
+                }
+              />
+            </FormField>
+
+            <FormField
+              label="Model"
+              description={
+                data.externalAiProvider === "gemini"
+                  ? "Recommended: gemini-2.5-flash (Fast, state-of-the-art knowledge, free tier)."
+                  : data.externalAiProvider === "openai"
+                  ? "Recommended: gpt-4o-mini."
+                  : "Recommended: openai/gpt-oss-120b (high performance, excellent Arabic support)."
+              }
             >
               <SelectInput
-                value={data.externalAiModel || "openai/gpt-oss-120b"}
+                value={
+                  data.externalAiModel ||
+                  (data.externalAiProvider === "gemini"
+                    ? "gemini-2.5-flash"
+                    : data.externalAiProvider === "openai"
+                    ? "gpt-4o-mini"
+                    : "openai/gpt-oss-120b")
+                }
                 onChange={(v) => update("externalAiModel", v)}
-                options={[
-                  { value: "openai/gpt-oss-120b", label: "OpenAI GPT-OSS 120B (Recommended, high quality)" },
-                  { value: "openai/gpt-oss-20b", label: "OpenAI GPT-OSS 20B (Fast)" },
-                  { value: "qwen/qwen3.8-27b", label: "Qwen 3.8 27B" },
-                  { value: "allam-2-7b", label: "Allam 2 7B (Arabic specialist)" },
-                  { value: "groq/compound", label: "Groq Compound" },
-                ]}
+                options={
+                  data.externalAiProvider === "gemini"
+                    ? [
+                        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Recommended, Ultra-fast)" },
+                        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro (Advanced reasoning)" },
+                        { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+                      ]
+                    : data.externalAiProvider === "openai"
+                    ? [
+                        { value: "gpt-4o-mini", label: "GPT-4o Mini (Fast & affordable)" },
+                        { value: "gpt-4o", label: "GPT-4o (Flagship)" },
+                      ]
+                    : [
+                        { value: "openai/gpt-oss-120b", label: "OpenAI GPT-OSS 120B (Recommended, high quality)" },
+                        { value: "openai/gpt-oss-20b", label: "OpenAI GPT-OSS 20B (Fast)" },
+                        { value: "qwen/qwen3.8-27b", label: "Qwen 3.8 27B" },
+                        { value: "allam-2-7b", label: "Allam 2 7B (Arabic specialist)" },
+                        { value: "groq/compound", label: "Groq Compound" },
+                      ]
+                }
               />
             </FormField>
 

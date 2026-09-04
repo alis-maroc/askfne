@@ -1951,17 +1951,19 @@ export async function callExternalAiFallback(
   const provider = config.externalAiProvider || "groq";
 
   // Build resilient model candidates.
-  // Groq deprecated llama-3.3-70b-versatile in free tier; default to openai/gpt-oss-120b.
   const preferredModel = (config.externalAiModel && config.externalAiModel !== "llama-3.3-70b-versatile")
     ? config.externalAiModel
-    : "openai/gpt-oss-120b";
+    : (provider === "gemini" ? "gemini-2.5-flash" : "openai/gpt-oss-120b");
 
   const candidateModels = provider === "groq"
     ? Array.from(new Set([preferredModel, "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]))
+    : provider === "gemini"
+    ? Array.from(new Set([preferredModel, "gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"]))
     : [preferredModel];
 
   let baseURL = "https://api.groq.com/openai/v1";
   if (provider === "openai") baseURL = "https://api.openai.com/v1";
+  if (provider === "gemini") baseURL = "https://generativelanguage.googleapis.com/v1beta/openai/";
 
   const client = new OpenAI({ apiKey, baseURL });
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
