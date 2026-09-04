@@ -51,13 +51,15 @@ model Settings {
 // ==================== AUTH ====================
 
 model Admin {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String
-  name      String   @default("Admin")
-  role      String   @default("admin")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  username    String   @unique
+  password    String
+  name        String   @default("Admin")
+  role        String   @default("admin")
+  permissions Json?    // Per-module access: { "forum": "write", "campaigns": "read", "settings": "none" }
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // ==================== KNOWLEDGE BASE ====================

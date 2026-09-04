@@ -5,6 +5,8 @@ import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 
+const VALID_ROLES = ["admin", "supervisor", "agent", "viewer"] as const;
+
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request, "admin:read");
   if (!isAuthenticated(auth)) return auth;
@@ -16,16 +18,11 @@ export async function GET(request: NextRequest) {
     const [users, total] = await Promise.all([
       prisma.admin.findMany({
         select: {
-          id: true,
-          username: true,
-          name: true,
-          role: true,
-          createdAt: true,
-          updatedAt: true,
+          id: true, username: true, name: true, role: true,
+          isActive: true, permissions: true, createdAt: true, updatedAt: true,
         },
         orderBy: { createdAt: "asc" },
-        skip,
-        take,
+        skip, take,
       }),
       prisma.admin.count(),
     ]);
@@ -33,10 +30,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(paginatedResponse(users, total, page, limit));
   } catch (error) {
     logger.error("Failed to fetch admin users:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch admin users" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch admin users" }, { status: 500 });
   }
 }
 
@@ -46,59 +40,38 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { username, password, name, role } = body;
+    const { username, password, name, role, permissions, isActive } = body;
 
     if (!username || typeof username !== "string" || username.trim().length === 0) {
-      return NextResponse.json(
-        { error: "Username is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Username is required" }, { status: 400 });
     }
-
     if (!password || typeof password !== "string" || password.length < 6) {
-      return NextResponse.json(
-        { error: "Password must be at least 6 characters" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
     }
 
-    const existing = await prisma.admin.findUnique({
-      where: { username: username.trim() },
-    });
+    const existing = await prisma.admin.findUnique({ where: { username: username.trim() } });
     if (existing) {
-      return NextResponse.json(
-        { error: "Username already exists" },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "Username already exists" }, { status: 409 });
     }
 
-    const validRoles = ["admin", "editor", "viewer"];
-    const userRole = validRoles.includes(role) ? role : "viewer";
-
+    const userRole = VALID_ROLES.includes(role) ? role : "agent";
     const hashed = await hashPassword(password);
+
     const user = await prisma.admin.create({
       data: {
         username: username.trim(),
         password: hashed,
         name: name?.trim() || username.trim(),
         role: userRole,
+        isActive: typeof isActive === "boolean" ? isActive : true,
+        permissions: permissions || null,
       },
-      select: {
-        id: true,
-        username: true,
-        name: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: { id: true, username: true, name: true, role: true, isActive: true, permissions: true, createdAt: true, updatedAt: true },
     });
 
     return NextResponse.json(user, { status: 201 });
   } catch (error) {
     logger.error("Failed to create admin user:", error);
-    return NextResponse.json(
-      { error: "Failed to create admin user" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create admin user" }, { status: 500 });
   }
 }

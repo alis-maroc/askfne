@@ -4,7 +4,9 @@ import { hashPassword } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 
-export async function PUT(
+const VALID_ROLES = ["admin", "supervisor", "agent", "viewer"] as const;
+
+export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -14,7 +16,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, role, password } = body;
+    const { name, role, password, isActive, permissions } = body;
 
     const existing = await prisma.admin.findUnique({ where: { id } });
     if (!existing) {
@@ -22,30 +24,10 @@ export async function PUT(
     }
 
     const updateData: Record<string, unknown> = {};
-
-    if (name !== undefined) {
-      updateData.name = name.trim();
-    }
-
-    if (role !== undefined) {
-      const validRoles = ["admin", "editor", "viewer"];
-      if (validRoles.includes(role)) {
-        // Prevent removing the last admin
-        if (existing.role === "admin" && role !== "admin") {
-          const adminCount = await prisma.admin.count({
-            where: { role: "admin" },
-          });
-          if (adminCount <= 1) {
-            return NextResponse.json(
-              { error: "Cannot change role of the last admin user" },
-              { status: 400 }
-            );
-          }
-        }
-        updateData.role = role;
-      }
-    }
-
+    if (name !== undefined) updateData.name = String(name).trim();
+    if (role !== undefined && VALID_ROLES.includes(role)) updateData.role = role;
+    if (typeof isActive === "boolean") updateData.isActive = isActive;
+    if (permissions !== undefined) updateData.permissions = permissions;
     if (password && typeof password === "string" && password.length >= 6) {
       updateData.password = await hashPassword(password);
     }
@@ -53,25 +35,18 @@ export async function PUT(
     const user = await prisma.admin.update({
       where: { id },
       data: updateData,
-      select: {
-        id: true,
-        username: true,
-        name: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: { id: true, username: true, name: true, role: true, isActive: true, permissions: true, createdAt: true, updatedAt: true },
     });
 
     return NextResponse.json(user);
   } catch (error) {
     logger.error("Failed to update admin user:", error);
-    return NextResponse.json(
-      { error: "Failed to update admin user" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update admin user" }, { status: 500 });
   }
 }
+
+// Keep PUT for backward compatibility
+export { PATCH as PUT };
 
 export async function DELETE(
   request: NextRequest,
@@ -82,28 +57,15 @@ export async function DELETE(
 
   try {
     const { id } = await params;
-
     const existing = await prisma.admin.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const adminCount = await prisma.admin.count({ where: { role: "admin" } });
-    if (existing.role === "admin" && adminCount <= 1) {
-      return NextResponse.json(
-        { error: "Cannot delete the last admin user" },
-        { status: 400 }
-      );
-    }
-
     await prisma.admin.delete({ where: { id } });
-
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error("Failed to delete admin user:", error);
-    return NextResponse.json(
-      { error: "Failed to delete admin user" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete admin user" }, { status: 500 });
   }
 }

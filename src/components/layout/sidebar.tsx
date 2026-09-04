@@ -95,6 +95,7 @@ const sections: NavSection[] = [
     title: "System",
     items: [
       { name: "Administration", href: "/admin", icon: Shield },
+      { name: "Gestion des Users 👥", href: "/admin/users", icon: Users },
       { name: "Sauvegardes 💾", href: "/admin/backups", icon: HardDrive },
       { name: "API Docs", href: "/api-docs", icon: FileCode },
       { name: "Settings", href: "/settings", icon: Settings },
