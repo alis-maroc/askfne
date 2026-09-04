@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Search, Sun, Moon, LogOut, User } from "lucide-react";
+import { Bell, Search, Sun, Moon, LogOut, User, Shield } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useTheme } from "@/lib/hooks/use-theme";
 import { useRouter } from "next/navigation";
@@ -102,6 +102,16 @@ export function Header({ title, description, actions }: HeaderProps) {
               >
                 <User className="h-4 w-4" />
                 Profile & Settings
+              </button>
+              <button
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  router.push("/admin/users");
+                }}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-owly-text hover:bg-owly-primary-50 transition-colors"
+              >
+                <Shield className="h-4 w-4" />
+                Utilisateurs & Droits
               </button>
               <div className="border-t border-owly-border my-1" />
               <button

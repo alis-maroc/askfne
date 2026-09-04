@@ -567,26 +567,36 @@ export default function TeamPage() {
       <div className="flex-1 overflow-auto p-6 space-y-6">
         {/* Tabs + actions bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex gap-1 bg-owly-bg p-1 rounded-lg border border-owly-border">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => {
-                  setActiveTab(tab.key);
-                  setSearch("");
-                  setFilterDept("");
-                }}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
-                  activeTab === tab.key
-                    ? "bg-owly-surface text-owly-primary shadow-sm"
-                    : "text-owly-text-light hover:text-owly-text"
-                )}
-              >
-                <tab.icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 bg-owly-bg p-1 rounded-lg border border-owly-border">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => {
+                    setActiveTab(tab.key);
+                    setSearch("");
+                    setFilterDept("");
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
+                    activeTab === tab.key
+                      ? "bg-owly-surface text-owly-primary shadow-sm"
+                      : "text-owly-text-light hover:text-owly-text"
+                  )}
+                >
+                  <tab.icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <a
+              href="/admin/users"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-owly-primary bg-owly-primary-50 hover:bg-owly-primary-100 border border-owly-primary-200 rounded-lg transition-colors"
+            >
+              <Shield className="h-4 w-4" />
+              Comptes & Permissions par module →
+            </a>
           </div>
 
           <div className="flex items-center gap-3">

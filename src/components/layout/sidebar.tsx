@@ -64,9 +64,10 @@ const sections: NavSection[] = [
     ],
   },
   {
-    title: "Team",
+    title: "Équipe & Accès",
     items: [
-      { name: "Team", href: "/team", icon: Users },
+      { name: "Utilisateurs & Droits 👥", href: "/admin/users", icon: Shield },
+      { name: "Départements & Staff", href: "/team", icon: Users },
       { name: "SLA Rules", href: "/sla", icon: Timer },
     ],
   },
