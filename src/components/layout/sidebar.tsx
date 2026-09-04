@@ -55,19 +55,19 @@ const sections: NavSection[] = [
     title: "Knowledge",
     items: [
       { name: "Knowledge Base", href: "/knowledge", icon: BookOpen },
-      { name: "مختبر اختبار الذكاء (AI Lab) 🧪", href: "/ai-test", icon: FlaskConical },
-      { name: "دليل المجيب الآلي (PDF)", href: "/guide-fne-chatbot.pdf", icon: FileText },
-      { name: "Questions sans réponse", href: "/knowledge/unanswered", icon: HelpCircle },
+      { name: "AI Testing Lab", href: "/ai-test", icon: FlaskConical },
+      { name: "Bot Guide (PDF)", href: "/guide-fne-chatbot.pdf", icon: FileText },
+      { name: "Unanswered Questions", href: "/knowledge/unanswered", icon: HelpCircle },
       { name: "Canned Responses", href: "/canned-responses", icon: Zap },
       { name: "Automation", href: "/automation", icon: Workflow },
       { name: "Business Hours", href: "/business-hours", icon: Clock },
     ],
   },
   {
-    title: "Équipe & Accès",
+    title: "Team & Access",
     items: [
-      { name: "Utilisateurs & Droits 👥", href: "/admin/users", icon: Shield },
-      { name: "Départements & Staff", href: "/team", icon: Users },
+      { name: "Users & Permissions", href: "/admin/users", icon: Shield },
+      { name: "Departments & Staff", href: "/team", icon: Users },
       { name: "SLA Rules", href: "/sla", icon: Timer },
     ],
   },
@@ -75,9 +75,9 @@ const sections: NavSection[] = [
     title: "Channels",
     items: [
       { name: "Channels", href: "/channels", icon: Radio },
-      { name: "Widget WordPress 💬", href: "/channels/widget", icon: Globe },
-      { name: "Diffusion / Campagnes 📢", href: "/campaigns", icon: Megaphone },
-      { name: "منتدى النقاش 💬", href: "/forum", icon: MessageSquare },
+      { name: "WordPress Widget", href: "/channels/widget", icon: Globe },
+      { name: "Broadcast Campaigns", href: "/campaigns", icon: Megaphone },
+      { name: "Discussion Forum", href: "/forum", icon: MessageSquare },
       { name: "Webhooks", href: "/webhooks", icon: Webhook },
     ],
   },
@@ -85,10 +85,10 @@ const sections: NavSection[] = [
     title: "Insights",
     items: [
       { name: "Analytics", href: "/analytics", icon: BarChart3 },
-      { name: "Veille Groupes WhatsApp 👥", href: "/whatsapp-watch", icon: Eye },
-      { name: "Feedback 👍👎", href: "/feedback", icon: ThumbsUp },
-      { name: "طلبات إدارية 📄", href: "/admin-requests", icon: Printer },
-      { name: "ملاحظات واقتراحات 💡", href: "/suggestions", icon: Lightbulb },
+      { name: "WhatsApp Watch", href: "/whatsapp-watch", icon: Eye },
+      { name: "Feedback", href: "/feedback", icon: ThumbsUp },
+      { name: "Admin Requests", href: "/admin-requests", icon: Printer },
+      { name: "Suggestions & Ideas", href: "/suggestions", icon: Lightbulb },
       { name: "Activity Log", href: "/activity", icon: ScrollText },
     ],
   },
@@ -96,9 +96,9 @@ const sections: NavSection[] = [
     title: "System",
     items: [
       { name: "Administration", href: "/admin", icon: Shield },
-      { name: "Gestion des Users 👥", href: "/admin/users", icon: Users },
-      { name: "Sauvegardes 💾", href: "/admin/backups", icon: HardDrive },
-      { name: "API Docs", href: "/api-docs", icon: FileCode },
+      { name: "User Management", href: "/admin/users", icon: Users },
+      { name: "Backups", href: "/admin/backups", icon: HardDrive },
+      { name: "API Documentation", href: "/api-docs", icon: FileCode },
       { name: "Settings", href: "/settings", icon: Settings },
     ],
   },
@@ -127,7 +127,7 @@ export function Sidebar() {
         {!collapsed && (
           <div className="overflow-hidden">
             <h1 className="text-base font-bold tracking-tight">FNE</h1>
-            <p className="text-[10px] text-white/50">المساعد الذكي</p>
+            <p className="text-[10px] text-white/50">Smart Assistant</p>
           </div>
         )}
       </div>
