@@ -2434,7 +2434,7 @@ export async function chat(
                       externalAiAnswer: externalAnswer,
                     },
                   ],
-                },
+                } as unknown as Prisma.InputJsonValue,
               },
             });
           } catch (_) {}
@@ -2457,7 +2457,7 @@ export async function chat(
                     source: "external_ai",
                     externalAiAnswer: externalAnswer,
                   },
-                },
+                } as unknown as Prisma.InputJsonValue,
               },
             });
           } catch (_) {}
