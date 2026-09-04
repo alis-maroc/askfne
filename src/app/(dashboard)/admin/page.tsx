@@ -439,13 +439,22 @@ export default function AdminPage() {
                   {users.length} user{users.length !== 1 ? "s" : ""} total
                 </p>
               </div>
-              <button
-                onClick={() => openUserModal()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add User
-              </button>
+              <div className="flex items-center gap-2">
+                <a
+                  href="/admin/users"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-owly-primary bg-owly-primary-50 hover:bg-owly-primary-100 border border-owly-primary-200 rounded-lg transition-colors"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  Gestion avancée & Permissions par module →
+                </a>
+                <button
+                  onClick={() => openUserModal()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add User
+                </button>
+              </div>
             </div>
 
             {loadingUsers ? (
