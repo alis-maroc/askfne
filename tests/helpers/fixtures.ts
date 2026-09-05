@@ -45,7 +45,7 @@ export const fixtures = {
     externalAiEnabled: false,
     externalAiProvider: "groq",
     externalAiModel: "llama-3.3-70b-versatile",
-    externalAiApiKey: "",
+    externalAiApiKey: "ext-key-12345",
     externalAiPrompt: "",
     externalAiAuditPolicy: "always",
     createdAt: new Date("2025-01-01"),

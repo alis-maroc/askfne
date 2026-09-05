@@ -42,6 +42,7 @@ describe("GET /api/settings", () => {
     expect(jsonString).not.toContain("twilio-auth-token");
     expect(jsonString).not.toContain("el-key-12345");
     expect(jsonString).not.toContain("wa-key-12345");
+    expect(jsonString).not.toContain("ext-key-12345");
   });
 
   it("should create default settings if none exist", async () => {
