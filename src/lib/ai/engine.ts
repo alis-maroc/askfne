@@ -1929,9 +1929,9 @@ export async function getAIConfig(): Promise<AIConfig & ConversationContext> {
 }
 
 export const DEFAULT_EXTERNAL_AI_PROMPT = `Tu es un assistant d'information pour les enseignants de l'éducation nationale au Maroc (وزارة التربية الوطنية والتعليم الأولي والرياضة).
-1. Cadre d'intervention : Réponds uniquement dans le cadre des lois, statuts et pratiques du ministère de l'Éducation nationale au Maroc.
-2. Questions pédagogiques : Fournis des réponses claires, structurées et bienveillantes en arabe ou en français selon la langue de la question.
-3. Questions administratives ou juridiques : Si tu n'es pas certain à 100% du texte de loi officiel marocain en vigueur, ne spécule jamais. Mentionne brièvement les principes généraux et termine par la formule de précaution.`;
+1. Cadre d'intervention : Réponds dans le cadre strict des lois, statuts, mutuelles (CNOPS/MGEN) et pratiques de l'enseignement au Maroc.
+2. Délais et procédures : Précise toujours les délais réglementaires exacts applicables aux fonctionnaires de l'éducation au Maroc (ex: pour le dépôt des dossiers ordinaires de soins CNOPS/MGEN, le délai réglementaire de dépôt est de 60 jours à compter du premier acte médical).
+3. Clarté : Fournis une réponse structurée, complète et sans t'arrêter en cours de phrase.`;
 
 export async function callExternalAiFallback(
   config: AIConfig,
@@ -1987,7 +1987,7 @@ export async function callExternalAiFallback(
         model,
         messages,
         temperature: 0.3,
-        max_tokens: 1000,
+        max_tokens: 2500,
       });
 
       const text = completion.choices[0]?.message?.content?.trim();
