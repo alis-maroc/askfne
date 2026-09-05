@@ -21,6 +21,8 @@ import {
   AlertTriangle,
   RotateCcw,
   Scale,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -99,6 +101,18 @@ export default function UnansweredQuestionsPage() {
   const [warnSubmitting, setWarnSubmitting] = useState(false);
   const [warnLifting, setWarnLifting] = useState(false);
   const [warnSuccess, setWarnSuccess] = useState("");
+
+  // Controlled expand/collapse for long answers in unanswered list
+  const [expandedResponseKeys, setExpandedResponseKeys] = useState<Set<string>>(new Set());
+
+  function toggleExpandResponse(key: string) {
+    setExpandedResponseKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   // Compare with/without External AI state
   const [compareModalOpen, setCompareModalOpen] = useState(false);
@@ -970,7 +984,7 @@ export default function UnansweredQuestionsPage() {
                   <div
                     key={idx}
                     className={cn(
-                      "p-4 sm:p-5 hover:bg-owly-bg/50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4",
+                      "p-4 sm:p-5 hover:bg-owly-bg/50 transition flex flex-col sm:flex-row sm:items-start justify-between gap-4",
                       isSelected && "bg-owly-primary/5"
                     )}
                   >
@@ -1048,25 +1062,81 @@ export default function UnansweredQuestionsPage() {
 
                         {item.lastResponse && (
                           <div className={cn(
-                            "text-xs px-3 py-2 rounded-lg border mt-2",
+                            "text-xs rounded-xl border mt-2 overflow-hidden transition-all",
                             item.sourceType === "external_ai"
-                              ? "bg-purple-50/70 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800/60 text-purple-950 dark:text-purple-100"
-                              : "text-owly-text-light/80 italic bg-owly-bg border-owly-border/50"
+                              ? "bg-purple-50/50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800/60"
+                              : "bg-owly-bg border-owly-border/60"
                           )}>
                             {item.sourceType === "external_ai" ? (
-                              <div className="space-y-1">
-                                <span className="font-bold text-[11px] text-purple-700 dark:text-purple-300 flex items-center gap-1">
-                                  <Sparkles className="h-3.5 w-3.5" />
-                                  الرد المقترح من الذكاء الخارجي (اضغط على "إضافة للقاعدة" لاعتماده):
-                                </span>
-                                <p className="text-xs leading-relaxed whitespace-pre-line line-clamp-3 hover:line-clamp-none transition">
-                                  {item.lastResponse}
-                                </p>
+                              <div>
+                                <div className="px-3 py-1.5 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-200/60 dark:border-purple-800/40 flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-[11px] text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    الرد المقترح من الذكاء الخارجي
+                                  </span>
+
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleExpandResponse(item.question)}
+                                      className="text-[11px] font-bold text-purple-700 hover:text-purple-900 dark:text-purple-300 inline-flex items-center gap-1 transition cursor-pointer"
+                                    >
+                                      {expandedResponseKeys.has(item.question) ? (
+                                        <>
+                                          <ChevronUp className="h-3.5 w-3.5" />
+                                          <span>طي الرد (Réduire)</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <ChevronDown className="h-3.5 w-3.5" />
+                                          <span>عرض الرد كاملاً (Afficher tout)</span>
+                                        </>
+                                      )}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => openAddToKnowledgeModal(item)}
+                                      className="px-2 py-0.5 text-[10px] font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-md shadow-xs transition"
+                                      title="اعتماد هذا الجواب وحفظه في قاعدة المعرفة"
+                                    >
+                                      اعتماد في القاعدة
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="p-3">
+                                  {expandedResponseKeys.has(item.question) ? (
+                                    <div className="max-h-56 overflow-y-auto pr-1 text-xs text-owly-text leading-6 whitespace-pre-wrap rounded-lg bg-owly-surface/70 border border-owly-border/50 p-3 shadow-inner font-sans">
+                                      {item.lastResponse}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs leading-relaxed text-owly-text line-clamp-2">
+                                      {item.lastResponse}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
                             ) : (
-                              <p className="line-clamp-1 italic">
-                                جواب المساعد السابق: "{item.lastResponse}"
-                              </p>
+                              <div className="px-3 py-2 flex items-center justify-between gap-2">
+                                <p className="line-clamp-1 italic text-xs text-owly-text-light/80">
+                                  جواب المساعد السابق: "{item.lastResponse}"
+                                </p>
+                                {item.lastResponse.length > 80 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleExpandResponse(item.question)}
+                                    className="text-[10px] text-owly-primary hover:underline shrink-0"
+                                  >
+                                    {expandedResponseKeys.has(item.question) ? "طي" : "عرض"}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            {item.sourceType !== "external_ai" && expandedResponseKeys.has(item.question) && (
+                              <div className="p-3 pt-0 text-xs text-owly-text leading-6 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                {item.lastResponse}
+                              </div>
                             )}
                           </div>
                         )}
