@@ -34,7 +34,8 @@ interface UnansweredQuestion {
   conversationId: string;
   customerName: string;
   customerContact?: string | null;
-  sourceType?: "manual" | "refusal" | "feedback";
+  sourceType?: "manual" | "refusal" | "feedback" | "external_ai";
+  externalAiAnswer?: string | null;
   isHeld?: boolean;
   holdingId?: string | null;
   holdingMessage?: string | null;
@@ -179,7 +180,8 @@ export default function UnansweredQuestionsPage() {
   function openAddToKnowledgeModal(item: UnansweredQuestion) {
     setSelectedQuestion(item);
     setTitle(item.question);
-    setContent("");
+    const prefill = item.externalAiAnswer || (item.sourceType === "external_ai" ? item.lastResponse : "");
+    setContent(prefill ? prefill.replace(/\n\n> ⚠️ \*\*تنبيه:\*\*[\s\S]*$/, "").trim() : "");
     setPriority(10);
     setSuccessMessage("");
     setNotifyWhatsApp(item.channels.includes("whatsapp") && !!item.customerContact);
@@ -557,6 +559,8 @@ export default function UnansweredQuestionsPage() {
           matchesSource = item.sourceType === "refusal" || !item.sourceType;
         } else if (sourceFilter === "feedback") {
           matchesSource = item.sourceType === "feedback";
+        } else if (sourceFilter === "external_ai") {
+          matchesSource = item.sourceType === "external_ai";
         }
       }
 
@@ -579,6 +583,7 @@ export default function UnansweredQuestionsPage() {
     });
 
   const totalOccurrences = questions.reduce((sum, q) => sum + q.count, 0);
+  const externalAiQuestionsCount = questions.filter((q) => q.sourceType === "external_ai").length;
   const isAllSelected = filtered.length > 0 && selectedQuestions.size === filtered.length;
   const hasActiveFilters =
     dateFilter !== "all" ||
@@ -597,7 +602,7 @@ export default function UnansweredQuestionsPage() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* KPI Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-owly-surface border border-owly-border rounded-xl p-4 flex items-center gap-4 shadow-sm">
             <div className="p-3 bg-amber-500/10 text-amber-600 rounded-xl">
               <HelpCircle className="h-6 w-6" />
@@ -615,6 +620,27 @@ export default function UnansweredQuestionsPage() {
             </div>
           </div>
 
+          <div
+            onClick={() => setSourceFilter(sourceFilter === "external_ai" ? "all" : "external_ai")}
+            className={cn(
+              "bg-owly-surface border rounded-xl p-4 flex items-center gap-4 shadow-sm cursor-pointer transition",
+              sourceFilter === "external_ai"
+                ? "border-purple-500 ring-2 ring-purple-500/20 bg-purple-50/10"
+                : "border-owly-border hover:border-purple-400/50"
+            )}
+            title="انقر لتصفية أسئلة الذكاء الخارجي"
+          >
+            <div className="p-3 bg-purple-500/10 text-purple-600 rounded-xl">
+              <Sparkles className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs text-owly-text-light font-medium">إجابات الذكاء الخارجي (IA Externe)</p>
+              <h3 className="text-2xl font-bold text-purple-600 mt-0.5">
+                {externalAiQuestionsCount}
+              </h3>
+            </div>
+          </div>
+
           <div className="bg-owly-surface border border-owly-border rounded-xl p-4 flex items-center gap-4 shadow-sm">
             <div className="p-3 bg-red-500/10 text-red-600 rounded-xl">
               <MessageSquare className="h-6 w-6" />
@@ -627,7 +653,7 @@ export default function UnansweredQuestionsPage() {
 
           <div className="bg-owly-surface border border-owly-border rounded-xl p-4 flex items-center gap-4 shadow-sm">
             <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-xl">
-              <Sparkles className="h-6 w-6" />
+              <CheckCircle2 className="h-6 w-6" />
             </div>
             <div>
               <p className="text-xs text-owly-text-light font-medium">حالة التغطية وسرعة الرد</p>
@@ -740,6 +766,7 @@ export default function UnansweredQuestionsPage() {
                 className="w-full px-2.5 py-1.5 text-xs bg-owly-bg border border-owly-border rounded-lg outline-none text-owly-text focus:border-owly-primary transition"
               >
                 <option value="all">كل المصادر (All)</option>
+                <option value="external_ai">✨ إجابات الذكاء الخارجي (IA Externe)</option>
                 <option value="manual">✍️ تحويل يدوي فقط</option>
                 <option value="refusal">🤖 غياب معلومة تلقائي</option>
                 <option value="feedback">👎 تقييم سلبي من المنخرط</option>
@@ -860,18 +887,23 @@ export default function UnansweredQuestionsPage() {
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
                             {item.count} {item.count > 1 ? "مرات" : "مرة"}
                           </span>
+                          {item.sourceType === "external_ai" && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300 dark:border-purple-800 shadow-sm">
+                              ✨ إجابة ذكاء خارجي (IA Externe)
+                            </span>
+                          )}
                           {item.sourceType === "manual" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
                               ✍️ تحويل يدوي
                             </span>
                           )}
                           {item.sourceType === "feedback" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
                               👎 تقييم سلبي
                             </span>
                           )}
                           {item.sourceType === "refusal" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                               🤖 غياب معلومة
                             </span>
                           )}
@@ -907,9 +939,28 @@ export default function UnansweredQuestionsPage() {
                         </div>
 
                         {item.lastResponse && (
-                          <p className="text-xs text-owly-text-light/80 line-clamp-1 italic bg-owly-bg px-2.5 py-1 rounded border border-owly-border/50 mt-1">
-                            جواب المساعد السابق: "{item.lastResponse}"
-                          </p>
+                          <div className={cn(
+                            "text-xs px-3 py-2 rounded-lg border mt-2",
+                            item.sourceType === "external_ai"
+                              ? "bg-purple-50/70 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800/60 text-purple-950 dark:text-purple-100"
+                              : "text-owly-text-light/80 italic bg-owly-bg border-owly-border/50"
+                          )}>
+                            {item.sourceType === "external_ai" ? (
+                              <div className="space-y-1">
+                                <span className="font-bold text-[11px] text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                                  <Sparkles className="h-3.5 w-3.5" />
+                                  الرد المقترح من الذكاء الخارجي (اضغط على "إضافة للقاعدة" لاعتماده):
+                                </span>
+                                <p className="text-xs leading-relaxed whitespace-pre-line line-clamp-3 hover:line-clamp-none transition">
+                                  {item.lastResponse}
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="line-clamp-1 italic">
+                                جواب المساعد السابق: "{item.lastResponse}"
+                              </p>
+                            )}
+                          </div>
                         )}
 
                         {item.isHeld && (

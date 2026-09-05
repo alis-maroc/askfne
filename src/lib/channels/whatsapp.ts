@@ -1012,6 +1012,22 @@ function isDuplicate(key?: string): boolean {
 let lastSendTimestamp = 0;
 const MIN_GAP_BETWEEN_MESSAGES_MS = 650;
 
+// Set of outbound message IDs dispatched by Owly to prevent them from being treated as manual admin messages in messages.upsert
+const sentBotMessageIds = new Set<string>();
+function trackSentBotMessageId(msgId: string | null | undefined) {
+  if (!msgId) return;
+  sentBotMessageIds.add(msgId);
+  // Keep bounded to last 2000 IDs to avoid memory leaks
+  if (sentBotMessageIds.size > 2000) {
+    const firstKey = sentBotMessageIds.values().next().value;
+    if (firstKey) sentBotMessageIds.delete(firstKey);
+  }
+}
+function isSentBotMessageId(msgId: string | null | undefined): boolean {
+  if (!msgId) return false;
+  return sentBotMessageIds.has(msgId);
+}
+
 async function sendText(jid: string, text: string): Promise<void> {
   if (!waState.sock || !text) return;
 
@@ -1034,6 +1050,9 @@ async function sendText(jid: string, text: string): Promise<void> {
     // 4. Reset typing status and send message
     await waState.sock.sendPresenceUpdate("paused", jid).catch(() => { });
     const sendRes = await waState.sock.sendMessage(jid, { text }, { linkPreview: null } as any);
+    if (sendRes?.key?.id) {
+      trackSentBotMessageId(sendRes.key.id);
+    }
     logger.info(`[WhatsApp/Baileys] Message dispatched to ${jid}, id: ${sendRes?.key?.id || "unknown"}`);
   } catch (err) {
     logger.error(`[WhatsApp/Baileys] sendText error to ${jid}:`, { error: String(err) });
@@ -2540,15 +2559,45 @@ _عاشت الجامعة الوطنية للتعليم FNE نقابة مناضل
 
       // When the admin sends a message to the user from the WhatsApp phone app
       if (msg.key.fromMe) {
-        logger.info(`[WhatsApp/Baileys] Outbound message from phone to ${jid}: "${body.substring(0, 50)}"`);
+        // 1. If this message was dispatched by Owly itself, skip immediately
+        const msgId = msg.key.id;
+        if (msgId && isSentBotMessageId(msgId)) {
+          logger.debug(`[WhatsApp/Baileys] Ignoring fromMe message ${msgId} as it was dispatched by Owly`);
+          continue;
+        }
+
+        // 2. Ignore messages containing bot templates, menus, or automated footers
+        if (
+          body.includes("للرجوع للقائمة الرئيسية") ||
+          body.includes("هل أفادك هذا الجواب") ||
+          body.includes("الجامعة الوطنية للتعليم") ||
+          body.includes("hub.taalim.org") ||
+          body.includes("Taalim.org") ||
+          body.includes("صيفط 0")
+        ) {
+          logger.debug(`[WhatsApp/Baileys] Ignoring fromMe message matching bot signature: "${body.substring(0, 40)}"`);
+          continue;
+        }
+
+        logger.info(`[WhatsApp/Baileys] Genuine outbound message from phone to ${jid}: "${body.substring(0, 50)}"`);
         try {
           const conv = await prisma.conversation.findFirst({
             where: { channel: "whatsapp", customerContact: jid },
             orderBy: { updatedAt: "desc" },
           });
           if (conv) {
+            // 3. Time window & prefix check (30s) to guarantee no double-recording
+            const recentThreshold = new Date(Date.now() - 30000);
+            const prefix = body.substring(0, Math.min(body.length, 35));
             const existing = await prisma.message.findFirst({
-              where: { conversationId: conv.id, content: body },
+              where: {
+                conversationId: conv.id,
+                createdAt: { gte: recentThreshold },
+                OR: [
+                  { content: body },
+                  { content: { contains: prefix } },
+                ],
+              },
             });
             if (!existing) {
               await prisma.message.create({

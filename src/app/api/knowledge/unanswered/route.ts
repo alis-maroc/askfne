@@ -83,7 +83,8 @@ export async function GET(request: NextRequest) {
         conversationId: string;
         customerName: string;
         customerContact: string | null;
-        sourceType: "manual" | "refusal" | "feedback";
+        sourceType: "manual" | "refusal" | "feedback" | "external_ai";
+        externalAiAnswer?: string | null;
       }
     >();
 
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
         ? (metadata.dismissedQuestions as string[])
         : [];
 
-      // A. Handle conversations manually marked as unanswered by admin
+      // A. Handle conversations manually marked as unanswered by admin or answered by external AI
       const isManual =
         metadata.isManuallyUnanswered === true ||
         metadata.isManuallyUnanswered === "true" ||
@@ -103,9 +104,9 @@ export async function GET(request: NextRequest) {
         Boolean(metadata.unansweredQuestion);
 
       if (isManual) {
-        const rawList: Array<{ question: string; messageId?: string; askedAt?: string }> =
+        const rawList: Array<{ question: string; messageId?: string; askedAt?: string; source?: string; externalAiAnswer?: string }> =
           Array.isArray(metadata.unansweredQuestions) && metadata.unansweredQuestions.length > 0
-            ? (metadata.unansweredQuestions as Array<{ question: string; messageId?: string; askedAt?: string }>)
+            ? (metadata.unansweredQuestions as Array<{ question: string; messageId?: string; askedAt?: string; source?: string; externalAiAnswer?: string }>)
             : metadata.unansweredQuestion
             ? [{ question: String(metadata.unansweredQuestion), askedAt: String(metadata.unansweredAt || "") }]
             : [];
@@ -128,6 +129,11 @@ export async function GET(request: NextRequest) {
           if (!dismissedList.includes(normKey)) {
             const existing = unansweredMap.get(normKey);
             const askedDate = item.askedAt ? new Date(item.askedAt) : conv.updatedAt;
+            const isExternalAi = item.source === "external_ai";
+            const lastResp = isExternalAi && item.externalAiAnswer
+              ? item.externalAiAnswer
+              : "⚠️ تم تحويل هذا السؤال يدوياً من المحادثة للمتابعة واعتماد إجابة.";
+
             if (!existing) {
               unansweredMap.set(normKey, {
                 question: manualQ,
@@ -135,15 +141,20 @@ export async function GET(request: NextRequest) {
                 channels: new Set([conv.channel || "whatsapp"]),
                 firstAskedAt: askedDate,
                 lastAskedAt: askedDate,
-                lastResponse: "⚠️ تم تحويل هذا السؤال يدوياً من المحادثة للمتابعة واعتماد إجابة.",
+                lastResponse: lastResp,
                 conversationId: conv.id,
                 customerName: conv.customerName || "منخرط",
                 customerContact: conv.customerContact || null,
-                sourceType: "manual",
+                sourceType: isExternalAi ? "external_ai" : "manual",
+                externalAiAnswer: item.externalAiAnswer || null,
               });
             } else {
               existing.count += 1;
-              existing.sourceType = "manual";
+              if (isExternalAi) {
+                existing.sourceType = "external_ai";
+                existing.lastResponse = lastResp;
+                existing.externalAiAnswer = item.externalAiAnswer || existing.externalAiAnswer;
+              }
               if (askedDate > existing.lastAskedAt) {
                 existing.lastAskedAt = askedDate;
               }
