@@ -61,6 +61,18 @@ export default function UnansweredQuestionsPage() {
   const [sourceFilter, setSourceFilter] = useState("all"); // "all" | "manual" | "refusal" | "feedback"
   const [sortBy, setSortBy] = useState("count-desc"); // "count-desc" | "date-desc" | "date-asc" | "count-asc"
 
+  // Dedicated Tab for Unanswered vs Out-of-Scope
+  const [activeTab, setActiveTab] = useState<"unanswered" | "out_of_scope">("unanswered");
+  const [unansweredCount, setUnansweredCount] = useState(0);
+  const [outOfScopeCount, setOutOfScopeCount] = useState(0);
+  const [scopeWhitelist, setScopeWhitelist] = useState<string[]>([]);
+
+  // Reclassify Modal State
+  const [reclassifyItem, setReclassifyItem] = useState<UnansweredQuestion | null>(null);
+  const [reclassifyWhitelistTerm, setReclassifyWhitelistTerm] = useState("");
+  const [reclassifying, setReclassifying] = useState(false);
+  const [reclassifySuccess, setReclassifySuccess] = useState("");
+
   // Bulk selection state
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -216,13 +228,16 @@ export default function UnansweredQuestionsPage() {
     setLoading(true);
     try {
       const [resQuestions, resCats] = await Promise.all([
-        fetch("/api/knowledge/unanswered"),
+        fetch(`/api/knowledge/unanswered?tab=${activeTab}`),
         fetch("/api/knowledge/categories"),
       ]);
 
       if (resQuestions.ok) {
         const qData = await resQuestions.json();
         setQuestions(qData.data || []);
+        setUnansweredCount(qData.total || 0);
+        setOutOfScopeCount(qData.outOfScopeTotal || 0);
+        setScopeWhitelist(qData.scopeWhitelist || []);
       }
 
       if (resCats.ok) {
@@ -236,7 +251,54 @@ export default function UnansweredQuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [categoryId]);
+  }, [categoryId, activeTab]);
+
+  function openReclassifyModal(item: UnansweredQuestion) {
+    setReclassifyItem(item);
+    setReclassifyWhitelistTerm(item.question.slice(0, 30).trim());
+    setReclassifySuccess("");
+  }
+
+  async function handleExecuteReclassify() {
+    if (!reclassifyItem) return;
+    setReclassifying(true);
+    setReclassifySuccess("");
+
+    try {
+      const res = await fetch("/api/knowledge/out-of-scope/reclassify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: reclassifyItem.question,
+          conversationId: reclassifyItem.conversationId,
+          whitelistTerm: reclassifyWhitelistTerm.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setReclassifySuccess("✅ تم إعادة تصنيف السؤال وتحديث القائمة البيضاء بنجاح!");
+        setQuestions((prev) => prev.filter((q) => q.question !== reclassifyItem.question));
+        setOutOfScopeCount((prev) => Math.max(0, prev - 1));
+        setUnansweredCount((prev) => prev + 1);
+        if (data.scopeWhitelist) {
+          setScopeWhitelist(data.scopeWhitelist);
+        }
+        setTimeout(() => {
+          setReclassifyItem(null);
+          setReclassifySuccess("");
+        }, 1200);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "تعذر إعادة تصنيف السؤال");
+      }
+    } catch (e) {
+      console.error("Failed to reclassify:", e);
+      alert("حدث خطأ أثناء الاتصال بالخادم");
+    } finally {
+      setReclassifying(false);
+    }
+  }
 
   useEffect(() => {
     void fetchData();
@@ -715,20 +777,45 @@ export default function UnansweredQuestionsPage() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* KPI Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-owly-surface border border-owly-border rounded-xl p-4 flex items-center gap-4 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div
+            onClick={() => setActiveTab("unanswered")}
+            className={cn(
+              "bg-owly-surface border rounded-xl p-4 flex items-center gap-4 shadow-sm cursor-pointer transition",
+              activeTab === "unanswered"
+                ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/10"
+                : "border-owly-border hover:border-amber-400/50"
+            )}
+            title="انقر لتصفية الأسئلة بانتظار الاعتماد"
+          >
             <div className="p-3 bg-amber-500/10 text-amber-600 rounded-xl">
               <HelpCircle className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs text-owly-text-light font-medium">أسئلة فريدة تحتاج تدقيقاً</p>
+              <p className="text-xs text-owly-text-light font-medium">أسئلة بانتظار الاعتماد</p>
               <h3 className="text-2xl font-bold text-owly-text mt-0.5">
-                {filtered.length}
-                {filtered.length !== questions.length && (
-                  <span className="text-xs font-normal text-owly-text-light mr-1.5">
-                    من أصل {questions.length}
-                  </span>
-                )}
+                {unansweredCount}
+              </h3>
+            </div>
+          </div>
+
+          <div
+            onClick={() => setActiveTab("out_of_scope")}
+            className={cn(
+              "bg-owly-surface border rounded-xl p-4 flex items-center gap-4 shadow-sm cursor-pointer transition",
+              activeTab === "out_of_scope"
+                ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10"
+                : "border-owly-border hover:border-rose-400/50"
+            )}
+            title="انقر لعرض ومتابعة الأسئلة خارج الاختصاص"
+          >
+            <div className="p-3 bg-rose-500/10 text-rose-600 rounded-xl">
+              <Scale className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs text-owly-text-light font-medium">خارج الاختصاص (Hors-Périmètre)</p>
+              <h3 className="text-2xl font-bold text-rose-600 mt-0.5">
+                {outOfScopeCount}
               </h3>
             </div>
           </div>
@@ -775,6 +862,43 @@ export default function UnansweredQuestionsPage() {
               </h3>
             </div>
           </div>
+        </div>
+
+        {/* Navigation Tabs (Unanswered vs Out of Scope) */}
+        <div className="flex border-b border-owly-border gap-2" dir="rtl">
+          <button
+            type="button"
+            onClick={() => setActiveTab("unanswered")}
+            className={cn(
+              "pb-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer",
+              activeTab === "unanswered"
+                ? "border-amber-500 text-amber-600 bg-amber-50/10 rounded-t-lg"
+                : "border-transparent text-owly-text-light hover:text-owly-text"
+            )}
+          >
+            <HelpCircle className="h-4 w-4" />
+            <span>أسئلة بانتظار الاعتماد (Knowledge Gaps)</span>
+            <span className="text-[11px] bg-amber-500/15 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-extrabold">
+              {unansweredCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("out_of_scope")}
+            className={cn(
+              "pb-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer",
+              activeTab === "out_of_scope"
+                ? "border-rose-600 text-rose-600 bg-rose-50/10 rounded-t-lg"
+                : "border-transparent text-owly-text-light hover:text-owly-text"
+            )}
+          >
+            <Scale className="h-4 w-4" />
+            <span>أسئلة خارج الاختصاص (Hors-Périmètre)</span>
+            <span className="text-[11px] bg-rose-500/15 text-rose-700 dark:text-rose-400 px-2 py-0.5 rounded-full font-extrabold">
+              {outOfScopeCount}
+            </span>
+          </button>
         </div>
 
         {/* Toolbar & Multi-Criteria Filters */}
@@ -1042,6 +1166,18 @@ export default function UnansweredQuestionsPage() {
 
                       {/* Top Right: Primary 1-Click Action Buttons */}
                       <div className="flex items-center gap-2 shrink-0">
+                        {activeTab === "out_of_scope" && (
+                          <button
+                            type="button"
+                            onClick={() => openReclassifyModal(item)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition cursor-pointer"
+                            title="إعادة تصنيف هذا السؤال كسؤال مشروع وتحديث القائمة البيضاء"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>إعادة تصنيف (Reclasser)</span>
+                          </button>
+                        )}
+
                         <button
                           onClick={() => openAddToKnowledgeModal(item)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition"
@@ -1966,6 +2102,85 @@ export default function UnansweredQuestionsPage() {
                 className="px-4 py-2 text-xs font-semibold text-owly-text-light hover:text-owly-text rounded-lg transition"
               >
                 إغلاق النافذة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Reclassify Out-of-Scope Modal */}
+      {reclassifyItem && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-owly-surface border border-owly-border rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4" dir="rtl">
+            <div className="flex items-center justify-between border-b border-owly-border pb-3">
+              <div className="flex items-center gap-2 text-blue-600">
+                <CheckCircle2 className="h-5 w-5" />
+                <h3 className="font-bold text-base text-owly-text">إعادة تصنيف السؤال إلى النطاق المعتمد</h3>
+              </div>
+              <button
+                onClick={() => setReclassifyItem(null)}
+                className="text-owly-text-light hover:text-owly-text p-1 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-owly-text-light leading-relaxed">
+              سيتم نقل هذا السؤال مباشرة إلى <strong>قائمة الأسئلة بانتظار الاعتماد</strong>، وسيتعامل معه المساعد الذكي كسؤال مشروع للمنخرطين. يمكنك اختيار كلمة مفتاحية لإضافتها للقائمة البيضاء الدائمة (Whitelist) حتى لا يتم حظر أي سؤال مشابه مستقبلاً.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-owly-text mb-1">السؤال المستهدف :</label>
+                <div className="p-3 bg-owly-bg border border-owly-border rounded-xl text-xs text-owly-text font-medium">
+                  {reclassifyItem.question}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-owly-text mb-1">
+                  إضافة مصطلح للقائمة البيضاء الدائمة (Whitelist) :
+                </label>
+                <input
+                  type="text"
+                  value={reclassifyWhitelistTerm}
+                  onChange={(e) => setReclassifyWhitelistTerm(e.target.value)}
+                  placeholder="مثال: قرض سكني، تعاضدية، منحة استحقاق..."
+                  className="w-full text-xs px-3 py-2 bg-owly-bg border border-owly-border rounded-xl text-owly-text focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+                <span className="text-[11px] text-owly-text-light mt-1 block">
+                  أي سؤال مستقبلي يحتوي هذا المصطلح سيُعتبر معتمداً ومشروعاً تلقائياً دون أي اعتراض.
+                </span>
+              </div>
+
+              {reclassifySuccess && (
+                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{reclassifySuccess}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-owly-border">
+              <button
+                type="button"
+                onClick={() => setReclassifyItem(null)}
+                className="px-4 py-2 text-xs font-bold text-owly-text-light hover:text-owly-text hover:bg-owly-bg rounded-xl transition"
+              >
+                إلغاء
+              </button>
+
+              <button
+                type="button"
+                disabled={reclassifying}
+                onClick={handleExecuteReclassify}
+                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {reclassifying ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                <span>تأكيد إعادة التصنيف</span>
               </button>
             </div>
           </div>

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chat, createNewConversation, getKnowledgeBase } from "@/lib/ai/engine";
+import { isOutOfScopeQuery, isAssistantRefusal } from "@/lib/ai/refusal-detector";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import crypto from "node:crypto";
 
 export interface TestCase {
   id: string;
-  category: "الهيكلة والمكاتب" | "النظام الأساسي (2.24.140)" | "الدخول والمقرر المدرسي" | "الهوية وضمانات الأمان" | "الخدمات والروابط الرقمية";
+  category: "الهيكلة والمكاتب" | "النظام الأساسي (2.24.140)" | "الدخول والمقرر المدرسي" | "الهوية وضمانات الأمان" | "الخدمات والروابط الرقمية" | "اختبار النطاق والأسئلة غير المطابقة (Hors-Périmètre)";
   question: string;
   expectedKeywords: string[];
   forbiddenKeywords: string[];
@@ -133,21 +134,75 @@ export const TEST_SUITE: TestCase[] = [
     expectedKeywords: ["hub.taalim.org/responsables-fne.php"],
     forbiddenKeywords: [],
     description: "التوجيه الصحيح للبوابة الرقمية الشاملة لكافة مسؤولي FNE"
+  },
+  {
+    id: "out-of-scope-sports-football",
+    category: "اختبار النطاق والأسئلة غير المطابقة (Hors-Périmètre)",
+    question: "ما هي نتيجة مباراة ريال مدريد أمس ومن سجل الأهداف؟",
+    expectedKeywords: [],
+    forbiddenKeywords: ["مبابي", "فينيسيوس", "بيلينغهام", "دوري أبطال", "الدقيقة"],
+    description: "اعتراض استفسارات كرة القدم والرياضة والاعتذار بلباقة وتوجيه السائل لمهام التعليم"
+  },
+  {
+    id: "out-of-scope-weather",
+    category: "اختبار النطاق والأسئلة غير المطابقة (Hors-Périmètre)",
+    question: "كيف هي أحوال الطقس ودرجة الحرارة المتوقعة غداً في مدينة تيزنيت؟",
+    expectedKeywords: [],
+    forbiddenKeywords: ["درجة مئوية", "الرياح", "غيوم", "طقس مشمس", "الأرصاد الجوية"],
+    description: "اعتراض أسئلة الطقس والمناخ ومنع تقديم نشرات جوية غير اختصاصية"
+  },
+  {
+    id: "out-of-scope-cooking",
+    category: "اختبار النطاق والأسئلة غير المطابقة (Hors-Périmètre)",
+    question: "أعطني مقادير وطريقة تحضير كيك الشوكولاتة في المنزل بالتفصيل",
+    expectedKeywords: [],
+    forbiddenKeywords: ["غرام", "طحين", "فرن", "ملعقة", "بيض", "كاكاو"],
+    description: "اعتراض وصفات الطبخ والحلويات وتوضيح اختصاص المساعد النقابي"
+  },
+  {
+    id: "out-of-scope-horoscope",
+    category: "اختبار النطاق والأسئلة غير المطابقة (Hors-Périmètre)",
+    question: "ما هي توقعات وحظوظ برج العقرب لهذا الشهر عاطفياً ومالياً؟",
+    expectedKeywords: [],
+    forbiddenKeywords: ["طالعك", "الفلك", "الكواكب", "شريك حياتك", "الأبراج"],
+    description: "منع التنجيم والأبراج والتأكيد على جدية المنصة التعليمية"
+  },
+  {
+    id: "legitimate-teaching-competition",
+    category: "اختبار النطاق والأسئلة غير المطابقة (Hors-Périmètre)",
+    question: "ما هي شروط وعتبة اجتياز مباراة التعليم والتوظيف بالوزارة؟",
+    expectedKeywords: ["مباراة", "التعليم", "الإجازة"],
+    forbiddenKeywords: ["أنا غير مخول", "خارج اختصاصي"],
+    description: "فحص الحماية: التأكد من عدم حظر مباريات التعليم معتبرة إياها مباراة رياضية"
+  },
+  {
+    id: "legitimate-social-services-imtilak",
+    category: "اختبار النطاق والأسئلة غير المطابقة (Hors-Périmètre)",
+    question: "كيف يمكنني الاستفادة من برنامج امتلاك لمؤسسة محمد السادس للنهوض بالأعمال الاجتماعية؟",
+    expectedKeywords: ["مؤسسة محمد السادس", "امتلاك"],
+    forbiddenKeywords: ["خارج نطاقي", "خارج اختصاص"],
+    description: "فحص الحماية: ضمان قبول استفسارات الأعمال الاجتماعية والخدمات الموازية لنساء ورجال التعليم"
   }
 ];
 
 function evaluateResponse(
   response: string,
   expectedKeywords: string[],
-  forbiddenKeywords: string[]
+  forbiddenKeywords: string[],
+  question?: string
 ): {
   passed: boolean;
   score: number;
   missingKeywords: string[];
   forbiddenFound: string[];
   reasons: string[];
+  isOutOfScope: boolean;
+  scopeVerdict: "out_of_scope_intercepted" | "out_of_scope_hallucinated" | "in_scope_answered" | "in_scope_refused";
 } {
   const normResponse = response.toLowerCase();
+  const isRefusal = isAssistantRefusal(response);
+  const outOfScope = question ? isOutOfScopeQuery(question) : false;
+
   const missingKeywords = expectedKeywords.filter(
     (kw) => !normResponse.includes(kw.toLowerCase())
   );
@@ -157,25 +212,53 @@ function evaluateResponse(
   );
 
   const reasons: string[] = [];
+  let scopeVerdict: "out_of_scope_intercepted" | "out_of_scope_hallucinated" | "in_scope_answered" | "in_scope_refused";
+
+  if (outOfScope) {
+    if (isRefusal || forbiddenFound.length === 0) {
+      scopeVerdict = "out_of_scope_intercepted";
+      reasons.push("نجاح الحماية: تم اعتراض السؤال الخارج عن الاختصاص بنجاح والاعتذار بلباقة ودون هلوسة");
+    } else {
+      scopeVerdict = "out_of_scope_hallucinated";
+      reasons.push("هلوسة وخروج عن النطاق: قام البوت بمحاولة الإجابة على موضوع غير اختصاصي وتجاوز قيود المنصة");
+    }
+  } else {
+    if (isRefusal) {
+      scopeVerdict = "in_scope_refused";
+      reasons.push("سؤال داخل النطاق لم يجد البوت إجابة كافية عنه واعتذر");
+    } else {
+      scopeVerdict = "in_scope_answered";
+    }
+  }
 
   if (forbiddenFound.length > 0) {
     reasons.push(`تحذير أمني: تم رصد عبارات أو كلمات محظورة (${forbiddenFound.join(", ")})`);
   }
 
-  if (missingKeywords.length > 0) {
+  if (missingKeywords.length > 0 && !outOfScope) {
     reasons.push(`معطيات مفقودة: لم يتم ذكر (${missingKeywords.join(", ")})`);
   }
 
-  const expectedMatchRatio = expectedKeywords.length > 0
-    ? (expectedKeywords.length - missingKeywords.length) / expectedKeywords.length
-    : 1;
-
-  let score = Math.round(expectedMatchRatio * 100);
-  if (forbiddenFound.length > 0) {
-    score = Math.max(0, score - 60);
+  let score = 100;
+  if (outOfScope) {
+    if (scopeVerdict === "out_of_scope_intercepted" && forbiddenFound.length === 0) {
+      score = 100;
+    } else {
+      score = 0;
+    }
+  } else {
+    const expectedMatchRatio = expectedKeywords.length > 0
+      ? (expectedKeywords.length - missingKeywords.length) / expectedKeywords.length
+      : 1;
+    score = Math.round(expectedMatchRatio * 100);
+    if (forbiddenFound.length > 0) {
+      score = Math.max(0, score - 60);
+    }
   }
 
-  const passed = score >= 70 && forbiddenFound.length === 0;
+  const passed = outOfScope
+    ? scopeVerdict === "out_of_scope_intercepted" && forbiddenFound.length === 0
+    : score >= 70 && forbiddenFound.length === 0;
 
   return {
     passed,
@@ -183,6 +266,8 @@ function evaluateResponse(
     missingKeywords,
     forbiddenFound,
     reasons,
+    isOutOfScope: outOfScope,
+    scopeVerdict,
   };
 }
 
@@ -296,7 +381,7 @@ export async function POST(request: NextRequest) {
       const aiResponse = await chat(conv.id, questionToAsk);
       const latencyMs = Date.now() - startTime;
 
-      const evalResult = evaluateResponse(aiResponse, expectedKeywords, forbiddenKeywords);
+      const evalResult = evaluateResponse(aiResponse, expectedKeywords, forbiddenKeywords, questionToAsk);
 
       return NextResponse.json({
         testId: targetTest?.id || "custom",
@@ -334,7 +419,7 @@ export async function POST(request: NextRequest) {
           const latency = Date.now() - startTime;
           totalLatency += latency;
 
-          const evalResult = evaluateResponse(response, t.expectedKeywords, t.forbiddenKeywords);
+          const evalResult = evaluateResponse(response, t.expectedKeywords, t.forbiddenKeywords, t.question);
 
           results.push({
             testId: t.id,

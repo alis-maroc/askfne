@@ -47,6 +47,8 @@ interface TestResult {
   missingKeywords: string[];
   forbiddenFound: string[];
   reasons: string[];
+  isOutOfScope?: boolean;
+  scopeVerdict?: "out_of_scope_intercepted" | "out_of_scope_hallucinated" | "in_scope_answered" | "in_scope_refused";
 }
 
 interface FlaggedItem {
@@ -463,30 +465,99 @@ export default function AiTestLabPage() {
               </div>
 
               {/* Quick Prompts Suggestions */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <span className="text-xs text-slate-400 self-center">اقتراحات سريعة:</span>
-                {[
-                  "كم عدد المكاتب الجهوية للجامعة؟",
-                  "أعطني كل الكتاب الإقليميين بجهة سوس ماسة",
-                  "من هو الكاتب الإقليمي لتارودانت وهاتفه؟",
-                  "ما هي شروط الترقية بالاختيار في النظام الأساسي؟",
-                  "رابط الخريطة المدرسية والتخطيط",
-                ].map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      setCustomQuestion(prompt);
-                    }}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950/30 text-slate-700 dark:text-slate-300 hover:text-red-600 transition-colors border border-slate-200 dark:border-slate-700"
-                  >
-                    {prompt}
-                  </button>
-                ))}
+              <div className="space-y-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 self-center">أسئلة نقابية وتعليمية:</span>
+                  {[
+                    "كم عدد المكاتب الجهوية للجامعة؟",
+                    "أعطني كل الكتاب الإقليميين بجهة سوس ماسة",
+                    "من هو الكاتب الإقليمي لتارودانت وهاتفه؟",
+                    "ما هي شروط الترقية بالاختيار في النظام الأساسي؟",
+                    "ما هي شروط مباراة التعليم والتوظيف؟",
+                    "الاستفادة من برنامج امتلاك مؤسسة محمد السادس",
+                  ].map((prompt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setCustomQuestion(prompt);
+                      }}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950/30 text-slate-700 dark:text-slate-300 hover:text-red-600 transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400 self-center">🔥 فحص خارج النطاق (Hors-Périmètre):</span>
+                  {[
+                    { text: "ما هي نتيجة مباراة ريال مدريد أمس؟", label: "⚽ رياضة / مدريد" },
+                    { text: "كيف هي أحوال الطقس ودرجة الحرارة في تيزنيت؟", label: "☀️ أحوال الطقس" },
+                    { text: "أعطني مقادير وطريقة تحضير كيك الشوكولاتة", label: "🍰 وصفة طبخ" },
+                    { text: "ما هي توقعات برج العقرب لهذا الشهر؟", label: "🔮 أبراج وفلك" },
+                  ].map((item, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setCustomQuestion(item.text);
+                      }}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 transition-colors cursor-pointer"
+                      title={item.text}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Custom Sandbox Result */}
               {customResult && (
                 <div className="mt-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 space-y-3">
+                  {/* Scope & Defense Verdict Banner */}
+                  {customResult.scopeVerdict && (
+                    <div
+                      className={`p-3 rounded-lg border flex items-center justify-between flex-wrap gap-2 text-xs font-bold ${
+                        customResult.scopeVerdict === "out_of_scope_intercepted"
+                          ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300"
+                          : customResult.scopeVerdict === "out_of_scope_hallucinated"
+                          ? "bg-red-50 dark:bg-red-950/60 border-red-300 dark:border-red-800 text-red-800 dark:text-red-300"
+                          : customResult.scopeVerdict === "in_scope_refused"
+                          ? "bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300"
+                          : "bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {customResult.scopeVerdict === "out_of_scope_intercepted" && (
+                          <>
+                            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            <span>درع الحماية: تم اعتراض السؤال بنجاح كخارج عن الاختصاص والاعتذار بلباقة ودون هلوسة (100/100)</span>
+                          </>
+                        )}
+                        {customResult.scopeVerdict === "out_of_scope_hallucinated" && (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                            <span>تنبيه خطير: السؤال خارج عن الاختصاص لكن البوت حاول الإجابة والهلوسة بدل الاعتذار!</span>
+                          </>
+                        )}
+                        {customResult.scopeVerdict === "in_scope_answered" && (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            <span>سؤال ضمن اختصاص المنصة التعليمية والنقابية (داخل النطاق)</span>
+                          </>
+                        )}
+                        {customResult.scopeVerdict === "in_scope_refused" && (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            <span>سؤال ضمن الاختصاص لكن البوت اعتذر لعدم وجود معطيات كافية في قاعدة المعرفة</span>
+                          </>
+                        )}
+                      </div>
+                      <span className="text-[11px] opacity-80">
+                        {customResult.isOutOfScope ? "تصنيف: خارج النطاق 🚫" : "تصنيف: داخل النطاق 🎓"}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -602,15 +673,27 @@ export default function AiTestLabPage() {
                             </span>
                             <span className="text-xs text-slate-400">#{test.id}</span>
                             {res && (
-                              <span
-                                className={`text-xs px-2 py-0.5 rounded font-bold ${
-                                  res.passed
-                                    ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300"
-                                    : "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
-                                }`}
-                              >
-                                {res.score}/100 {res.passed ? "ناجح" : "يحتاج مراجعة"} ({(res.latencyMs / 1000).toFixed(1)}s)
-                              </span>
+                              <>
+                                {res.scopeVerdict === "out_of_scope_intercepted" && (
+                                  <span className="text-xs px-2 py-0.5 rounded font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                                    🛡️ تم اعتراضه بنجاح
+                                  </span>
+                                )}
+                                {res.scopeVerdict === "out_of_scope_hallucinated" && (
+                                  <span className="text-xs px-2 py-0.5 rounded font-bold bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
+                                    🚨 هلوسة وتجاوز
+                                  </span>
+                                )}
+                                <span
+                                  className={`text-xs px-2 py-0.5 rounded font-bold ${
+                                    res.passed
+                                      ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300"
+                                      : "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
+                                  }`}
+                                >
+                                  {res.score}/100 {res.passed ? "ناجح" : "يحتاج مراجعة"} ({(res.latencyMs / 1000).toFixed(1)}s)
+                                </span>
+                              </>
                             )}
                           </div>
 

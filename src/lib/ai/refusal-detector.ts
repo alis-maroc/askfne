@@ -151,15 +151,30 @@ const GREETING_FILLER_WORDS = new Set([
 
 /**
  * Detects whether a user question is completely out of scope for the FNE educational & trade-union chatbot
- * (e.g. sports/football matches, weather/météo, horoscopes/entertainment).
- * Safely preserves legitimate educational queries (e.g. مباراة التعليم, مباراة الترقية, مباراة التفتيش).
+ * (e.g. sports/football matches, weather/météo, horoscopes/entertainment, cooking recipes).
+ * Safely preserves legitimate educational, statutaire, and social queries (e.g. مباراة التعليم, مباراة الترقية, Fondation Mohammed VI, CNOPS, CMR).
+ * Also respects the dynamic scopeWhitelist configured by administrators.
  */
-export function isOutOfScopeQuery(text: string | null | undefined): boolean {
+export function isOutOfScopeQuery(
+  text: string | null | undefined,
+  dynamicWhitelist: string[] = []
+): boolean {
   if (!text) return false;
-  const raw = text.toLowerCase();
+  const raw = text.toLowerCase().trim();
 
-  // If it mentions education or union keywords, it's ALWAYS in-scope (e.g. مباراة التعليم, مباراة الترقية, مباراة التفتيش)
-  const isEducational = /(?:تعليم|تربية|ترقية|وزارة|أستاذ|مدرس|تلميذ|مدرسة|ثانوي|إعدادي|ابتدائي|أكاديمية|مديرية|تفتيش|إدارة تربوية|مركز جهوي|crmef|متصرف|ملحق|نظام أساسي|نقابة|fne|منخرط|شهادة|تقاعد|رخصة|استيداع|تعاقد|تعويض)/i.test(raw);
+  // Dynamic Whitelist check (from Settings / reclassified items)
+  if (Array.isArray(dynamicWhitelist) && dynamicWhitelist.length > 0) {
+    for (const term of dynamicWhitelist) {
+      if (!term || typeof term !== "string") continue;
+      const cleanTerm = term.toLowerCase().trim();
+      if (cleanTerm && raw.includes(cleanTerm)) {
+        return false;
+      }
+    }
+  }
+
+  // If it mentions education or union keywords, civil service, or teacher social works, it's ALWAYS in-scope
+  const isEducational = /(?:تعليم|تربية|ترقية|وزارة|أستاذ|مدرس|تلميذ|مدرسة|ثانوي|إعدادي|ابتدائي|أكاديمية|مديرية|تفتيش|إدارة تربوية|مركز جهوي|crmef|متصرف|ملحق|نظام أساسي|نقابة|fne|منخرط|شهادة|تقاعد|رخصة|استيداع|تعاقد|تعويض|أجرة|راتب|اقتطاع|مؤسسة محمد السادس|fm6|imtilak|امتلاك|نافذة|nafida|كنوبس|cnops|امفام|mgen|تعاضدية|تأمين صحي|تغطية صحية|ملف مرضي|cmr|صندوق المغربي للتقاعد|تقاعد نسبي|حد السن|معاش|تخفيض القطار|oncf|سلف|قرض سكن|ضريبة على الدخل|حركة انتقالية|تبادل|مذكرة وزارية|مجلس انضباطي|عقوبة تأديبية|تظلم)/i.test(raw);
   if (isEducational) return false;
 
   // 1. Weather / Météo (e.g. حالة الطقس في تيزنيت, météo, درجة الحرارة)
@@ -179,6 +194,14 @@ export function isOutOfScopeQuery(text: string | null | undefined): boolean {
   const isAstrology = /(?:حظك اليوم|الأبراج اليومية|برج الحمل|برج الثور|برج الجوزاء|برج السرطان|برج الأسد|برج العذراء|برج الميزان|برج العقرب|برج القوس|برج الجدي|برج الدلو|برج الحوت|horoscope)/i.test(raw);
   if (isAstrology) return true;
 
+  // 4. Recipes & Cooking
+  const isCooking = /(?:طريقة تحضير|وصفة طبخ|طريقة عمل كيك|مقادير كيك|شهيوات|cuisine|recette\b)/i.test(raw);
+  if (isCooking) return true;
+
+  // 5. Entertainment, Cinema & Celebrity gossip
+  const isEntertainment = /(?:أخبار الفنانين|أخبار المشاهير|أغاني جديدة|مسلسلات رمضان|فيلم هندي)/i.test(raw);
+  if (isEntertainment) return true;
+
   return false;
 }
 
@@ -186,13 +209,16 @@ export function isOutOfScopeQuery(text: string | null | undefined): boolean {
  * Determines whether a user message represents a legitimate, substantive knowledge question,
  * filtering out greetings, pleasantries, navigation commands, digits, thanks, and technical noise.
  */
-export function isLegitimateKnowledgeQuestion(text: string | null | undefined): boolean {
+export function isLegitimateKnowledgeQuestion(
+  text: string | null | undefined,
+  dynamicWhitelist: string[] = []
+): boolean {
   if (!text) return false;
   const raw = text.trim();
   if (raw.length < 3) return false;
 
   // Filter out non-educational out-of-scope topics (sports, weather, astrology)
-  if (isOutOfScopeQuery(raw)) {
+  if (isOutOfScopeQuery(raw, dynamicWhitelist)) {
     return false;
   }
 

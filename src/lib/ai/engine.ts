@@ -1922,6 +1922,7 @@ export async function getAIConfig(): Promise<AIConfig & ConversationContext> {
     externalAiApiKey: (settings as any).externalAiApiKey || "",
     externalAiPrompt: (settings as any).externalAiPrompt || "",
     externalAiAuditPolicy: (settings as any).externalAiAuditPolicy || "always",
+    scopeWhitelist: Array.isArray((settings as any).scopeWhitelist) ? ((settings as any).scopeWhitelist as string[]) : [],
     maxTokens: settings.maxTokens,
     temperature: settings.temperature,
     businessName: settings.businessName,
@@ -1947,7 +1948,8 @@ export async function callExternalAiFallback(
   userMessage: string,
   history: Array<{ role: string; content: string }> = []
 ): Promise<string | null> {
-  if (isOutOfScopeQuery(userMessage)) {
+  const scopeWhitelist = Array.isArray(config.scopeWhitelist) ? config.scopeWhitelist : [];
+  if (isOutOfScopeQuery(userMessage, scopeWhitelist)) {
     logger.info("[ExternalAI] Intercepted out-of-scope query, skipping external AI fallback");
     return null;
   }
@@ -2399,7 +2401,38 @@ export async function chat(
 
   // Intercept out-of-scope queries (sports, weather, entertainment) deterministically.
   // Zero hallucination, zero token waste, consistent FNE identity.
-  const isOutOfScope = isOutOfScopeQuery(userMessage);
+  const scopeWhitelist = Array.isArray(config.scopeWhitelist) ? config.scopeWhitelist : [];
+  const isOutOfScope = isOutOfScopeQuery(userMessage, scopeWhitelist);
+  if (isOutOfScope) {
+    try {
+      const conv = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { metadata: true },
+      });
+      const meta = (conv?.metadata || {}) as Record<string, unknown>;
+      const existingOutOfScope = Array.isArray(meta.outOfScopeQuestions)
+        ? (meta.outOfScopeQuestions as Array<Record<string, unknown>>)
+        : [];
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          metadata: {
+            ...meta,
+            hasOutOfScope: true,
+            lastOutOfScopeAt: new Date().toISOString(),
+            outOfScopeQuestions: [
+              ...existingOutOfScope,
+              {
+                question: userMessage,
+                askedAt: new Date().toISOString(),
+              },
+            ],
+          } as any,
+        },
+      });
+    } catch (_) {}
+  }
+
   const outOfScopeAnswer = isOutOfScope
     ? [
         "📌 **توضيح من المساعد الذكي للجامعة الوطنية للتعليم FNE**",

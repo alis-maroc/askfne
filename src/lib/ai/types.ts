@@ -43,6 +43,7 @@ export interface AIConfig {
   externalAiApiKey?: string;
   externalAiPrompt?: string;
   externalAiAuditPolicy?: string;
+  scopeWhitelist?: string[];
   maxTokens: number;
   temperature: number;
 }

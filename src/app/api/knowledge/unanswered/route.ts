@@ -32,6 +32,14 @@ export async function GET(request: NextRequest) {
   if (!isAuthenticated(auth)) return auth;
 
   try {
+    const url = new URL(request.url);
+    const tab = url.searchParams.get("tab") || "unanswered";
+
+    const settings = await prisma.settings.findFirst({ select: { scopeWhitelist: true } });
+    const scopeWhitelist = Array.isArray(settings?.scopeWhitelist)
+      ? (settings?.scopeWhitelist as string[])
+      : [];
+
     // 1. Fetch conversations with messages
     const conversations = await prisma.conversation.findMany({
       where: {
@@ -71,6 +79,22 @@ export async function GET(request: NextRequest) {
       take: 100,
     });
 
+    const outOfScopeMap = new Map<
+      string,
+      {
+        question: string;
+        count: number;
+        channels: Set<string>;
+        firstAskedAt: Date;
+        lastAskedAt: Date;
+        lastResponse: string;
+        conversationId: string;
+        customerName: string;
+        customerContact: string | null;
+        sourceType: "out_of_scope";
+      }
+    >();
+
     const unansweredMap = new Map<
       string,
       {
@@ -94,6 +118,40 @@ export async function GET(request: NextRequest) {
       const dismissedList = Array.isArray(metadata.dismissedQuestions)
         ? (metadata.dismissedQuestions as string[])
         : [];
+
+      // C. Handle questions flagged as out of scope
+      if (Array.isArray(metadata.outOfScopeQuestions) && metadata.outOfScopeQuestions.length > 0) {
+        for (const item of (metadata.outOfScopeQuestions as Array<Record<string, unknown>>)) {
+          const qText = String(item.question || "").trim();
+          if (!qText || qText.length < 2) continue;
+
+          const normKey = normalizeQuestionKey(qText);
+          if (dismissedList.includes(normKey)) continue;
+
+          const askedDate = item.askedAt ? new Date(String(item.askedAt)) : conv.updatedAt;
+          const existing = outOfScopeMap.get(normKey);
+          if (existing) {
+            existing.count += 1;
+            existing.channels.add(conv.channel || "whatsapp");
+            if (askedDate > existing.lastAskedAt) {
+              existing.lastAskedAt = askedDate;
+            }
+          } else {
+            outOfScopeMap.set(normKey, {
+              question: qText,
+              count: 1,
+              channels: new Set([conv.channel || "whatsapp"]),
+              firstAskedAt: askedDate,
+              lastAskedAt: askedDate,
+              lastResponse: "تم الاعتذار لكون السؤال خارج اختصاص قطاع التعليم والنقابة (رياضة/طقس/ترفيه).",
+              conversationId: conv.id,
+              customerName: conv.customerName || "منخرط",
+              customerContact: conv.customerContact || null,
+              sourceType: "out_of_scope",
+            });
+          }
+        }
+      }
 
       // A. Handle conversations manually marked as unanswered by admin or answered by external AI
       const isManual =
@@ -295,9 +353,22 @@ export async function GET(request: NextRequest) {
       })
       .sort((a, b) => b.count - a.count || b.lastAskedAt.getTime() - a.lastAskedAt.getTime());
 
+    const outOfScopeResults = Array.from(outOfScopeMap.values())
+      .map((item) => ({
+        ...item,
+        channels: Array.from(item.channels),
+        isHeld: false,
+        holdingId: null,
+        holdingMessage: null,
+        holdingUpdatedAt: null,
+      }))
+      .sort((a, b) => b.count - a.count || b.lastAskedAt.getTime() - a.lastAskedAt.getTime());
+
     return NextResponse.json({
       total: results.length,
-      data: results,
+      outOfScopeTotal: outOfScopeResults.length,
+      data: tab === "out_of_scope" ? outOfScopeResults : results,
+      scopeWhitelist,
     });
   } catch (error) {
     logger.error("Failed to fetch unanswered questions:", error);
