@@ -13,8 +13,9 @@ import {
   BookOpen,
   FileText,
   ExternalLink,
+  Sparkles,
 } from "lucide-react";
-import { formatRelativeTime, getChannelLabel, getStatusColor } from "@/lib/utils";
+import { cn, formatRelativeTime, getChannelLabel, getStatusColor } from "@/lib/utils";
 
 async function getStats() {
   const startOfToday = new Date();
@@ -33,6 +34,7 @@ async function getStats() {
     todayCount,
     last7DaysCount,
     recentConversations,
+    settings,
   ] = await Promise.all([
     prisma.conversation.count(),
     prisma.conversation.count({ where: { status: "active" } }),
@@ -59,7 +61,29 @@ async function getStats() {
         _count: { select: { messages: true } },
       },
     }),
+    prisma.settings.findFirst({
+      select: {
+        externalAiEnabled: true,
+        externalAiProvider: true,
+        externalAiModel: true,
+        externalAiApiKey: true,
+      },
+    }),
   ]);
+
+  let externalAiUsageCount = 0;
+  try {
+    externalAiUsageCount = await prisma.conversation.count({
+      where: {
+        metadata: {
+          path: ["hasExternalAiFallback"],
+          equals: true,
+        },
+      },
+    });
+  } catch (_) {
+    // fallback if json path query is unsupported
+  }
 
   const resolvedConversations = await prisma.conversation.count({
     where: { status: "resolved" },
@@ -80,6 +104,12 @@ async function getStats() {
     last7DaysCount,
     resolutionRate,
     recentConversations,
+    externalAi: {
+      enabled: Boolean(settings?.externalAiEnabled && settings?.externalAiApiKey?.trim()),
+      provider: settings?.externalAiProvider || "gemini",
+      model: settings?.externalAiModel || "gemini-2.5-flash",
+      usageCount: externalAiUsageCount,
+    },
   };
 }
 
@@ -165,15 +195,16 @@ export default async function DashboardPage() {
             <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-medium">
               Questions traitées aujourd'hui : <strong className="text-slate-900 dark:text-white">{stats.todayCount}</strong>
             </span>
-            <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-medium ml-4">
+            <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-medium ml-2">
               Questions posées (7j) : <strong className="text-slate-900 dark:text-white">{stats.last7DaysCount}</strong>
             </span>
-            <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-medium ml-4">
-              Questions posées (total) : <strong className="text-slate-900 dark:text-white">{stats.totalMessages}</strong>
+            <span className="text-xs bg-purple-100/70 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 px-2.5 py-1 rounded-full font-semibold ml-2 flex items-center gap-1">
+              <Sparkles className="h-3 w-3 text-purple-600" />
+              <span>IA Externe ({stats.externalAi.provider.toUpperCase()}) : <strong className="text-purple-900 dark:text-white">{stats.externalAi.usageCount}</strong></span>
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Primary Provider: Groq */}
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -231,6 +262,47 @@ export default async function DashboardPage() {
                 </div>
               </div>
             </div>
+
+            {/* External AI Provider: Google Gemini */}
+            <div className="p-4 rounded-xl bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/60 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 font-bold text-xs border border-purple-500/20 flex items-center gap-1">
+                    <Sparkles className="h-3 w-3 text-purple-600" />
+                    <span>IA Externe (Inédits)</span>
+                  </span>
+                  <span className="font-bold text-xs text-slate-700 dark:text-slate-200">
+                    Gemini ({stats.externalAi.model})
+                  </span>
+                </div>
+                <span className={cn(
+                  "text-[11px] font-semibold px-2 py-0.5 rounded-full",
+                  stats.externalAi.enabled
+                    ? "text-emerald-600 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/60"
+                    : "text-slate-500 bg-slate-100 dark:bg-slate-800"
+                )}>
+                  {stats.externalAi.enabled ? "Actif 🟢" : "En attente ⚪"}
+                </span>
+              </div>
+              <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 pt-1">
+                <div className="flex justify-between">
+                  <span>Limite journalière (RPD) :</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">1 500 requêtes / jour</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Requêtes par minute (RPM) :</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">15 requêtes / min</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tokens par minute (TPM) :</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">1 000 000 tokens / min</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-purple-200/60 dark:border-purple-800/40">
+                  <span className="font-bold text-slate-900 dark:text-white">Réponses générées :</span>
+                  <span className="font-bold text-purple-700 dark:text-purple-300">{stats.externalAi.usageCount} questions</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 flex items-center gap-2">
@@ -285,7 +357,7 @@ export default async function DashboardPage() {
                   </p>
                 </div>
               ) : (
-                stats.recentConversations.map((conv) => {
+                stats.recentConversations.map((conv: any) => {
                   const ChannelIcon =
                     channelIcons[conv.channel] || MessageSquare;
                   const lastMessage = conv.messages[0];
