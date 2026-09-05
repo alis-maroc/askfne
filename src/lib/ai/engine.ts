@@ -1894,7 +1894,7 @@ export async function getKnowledgeBase(query?: string): Promise<KnowledgeItem[]>
   }));
 }
 
-async function getAIConfig(): Promise<AIConfig & ConversationContext> {
+export async function getAIConfig(): Promise<AIConfig & ConversationContext> {
   let settings = await prisma.settings.findFirst();
   if (!settings) {
     settings = await prisma.settings.create({ data: { id: "default" } });
@@ -2061,7 +2061,8 @@ export async function checkKeywordTriggers(message: string): Promise<string | nu
 
 export async function chat(
   conversationId: string,
-  userMessage: string
+  userMessage: string,
+  options?: { disableExternalAi?: boolean }
 ): Promise<string> {
   const config = await getAIConfig();
 
@@ -2454,6 +2455,7 @@ export async function chat(
 
   // External AI Fallback (e.g. Groq Llama-3.3-70B) for teacher queries absent from internal KB
   if (
+    !options?.disableExternalAi &&
     isRefusal &&
     config.externalAiEnabled &&
     detectedIntent !== INTENT.CONTACT_BUREAU &&

@@ -20,6 +20,7 @@ import {
   Square,
   AlertTriangle,
   RotateCcw,
+  Scale,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -98,6 +99,104 @@ export default function UnansweredQuestionsPage() {
   const [warnSubmitting, setWarnSubmitting] = useState(false);
   const [warnLifting, setWarnLifting] = useState(false);
   const [warnSuccess, setWarnSuccess] = useState("");
+
+  // Compare with/without External AI state
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [compareQuestion, setCompareQuestion] = useState("");
+  const [compareTargetItem, setCompareTargetItem] = useState<UnansweredQuestion | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareMode, setCompareMode] = useState<"both" | "local_only" | "external_only">("both");
+  const [compareData, setCompareData] = useState<{
+    question: string;
+    local: {
+      answer: string;
+      hasAnswer: boolean;
+      status: "found_in_kb" | "refusal";
+      message: string;
+    } | null;
+    external: {
+      answer: string;
+      hasAnswer: boolean;
+      provider: string;
+      model: string;
+      status: "generated" | "disabled" | "failed";
+      message: string;
+    } | null;
+    differenceSummary: string;
+  } | null>(null);
+
+  function openCompareModal(item: UnansweredQuestion | null) {
+    if (item) {
+      setCompareTargetItem(item);
+      setCompareQuestion(item.question);
+      setCompareData(null);
+      setCompareModalOpen(true);
+      void runCompare(item.question, "both");
+    } else {
+      setCompareTargetItem(null);
+      setCompareQuestion("");
+      setCompareData(null);
+      setCompareModalOpen(true);
+    }
+  }
+
+  async function runCompare(questionToTest: string, mode: "both" | "local_only" | "external_only" = "both") {
+    const q = questionToTest.trim();
+    if (!q) return;
+
+    setCompareLoading(true);
+    setCompareMode(mode);
+    try {
+      const res = await fetch("/api/knowledge/unanswered/compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, mode }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCompareData(data);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "تعذر إجراء اختبار المقارنة");
+      }
+    } catch (e) {
+      console.error("Failed to run comparison:", e);
+      alert("حدث خطأ أثناء إجراء المقارنة");
+    } finally {
+      setCompareLoading(false);
+    }
+  }
+
+  function handleAdoptExternalAnswerToKnowledge() {
+    if (!compareData?.external?.answer) return;
+
+    const baseItem: UnansweredQuestion = compareTargetItem || {
+      question: compareQuestion,
+      count: 1,
+      channels: ["web"],
+      firstAskedAt: new Date().toISOString(),
+      lastAskedAt: new Date().toISOString(),
+      lastResponse: compareData.external.answer,
+      conversationId: "",
+      customerName: "اختبار مقارنة",
+    };
+
+    setCompareModalOpen(false);
+
+    const cleanText = compareData.external.answer
+      .replace(/\n\n> ⚠️ \*\*تنبيه:\*\* هذه المعطيات استرشادية[\s\S]*$/, "")
+      .replace(/\n\n> ⚠️ \*\*Avertissement :\*\* Ces données sont fournies à titre indicatif[\s\S]*$/, "")
+      .trim();
+
+    setSelectedQuestion(baseItem);
+    setTitle(compareQuestion.slice(0, 120));
+    setContent(cleanText);
+    setPriority(10);
+    if (categories.length > 0 && !categoryId) {
+      setCategoryId(categories[0].id);
+    }
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -716,6 +815,15 @@ export default function UnansweredQuestionsPage() {
               >
                 <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
               </button>
+
+              <button
+                onClick={() => openCompareModal(null)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 rounded-lg shadow-sm transition"
+                title="اختبار ومقارنة أي سؤال مع وبدون الذكاء الخارجي لرؤية الفرق مباشرة"
+              >
+                <Scale className="h-4 w-4" />
+                <span className="hidden sm:inline">اختبار ومقارنة (مع/بدون IA)</span>
+              </button>
             </div>
           </div>
 
@@ -992,6 +1100,16 @@ export default function UnansweredQuestionsPage() {
                       >
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
                         <span>{item.isHeld ? "معلّق (تعديل)" : "تصويب وتجميد"}</span>
+                      </button>
+
+                      {/* Compare Button: Test with vs without External AI */}
+                      <button
+                        onClick={() => openCompareModal(item)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg shadow-sm transition"
+                        title="مقارنة الجواب مع الذكاء الخارجي وبدونه لرؤية الفرق مباشرة"
+                      >
+                        <Scale className="h-3.5 w-3.5 text-purple-600" />
+                        <span>مقارنة (مع/بدون IA)</span>
                       </button>
 
                       {/* 1. Re-check Button against updated Knowledge Base */}
@@ -1501,6 +1619,270 @@ export default function UnansweredQuestionsPage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Test & Compare (With/Without External AI) Modal */}
+      {compareModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-owly-surface border border-owly-border rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-owly-border flex items-center justify-between bg-owly-bg">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 border border-purple-500/20">
+                  <Scale className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-owly-text">
+                    اختبار ومقارنة الإجابات (Test & Comparateur IA)
+                  </h3>
+                  <p className="text-xs text-owly-text-light">
+                    قارن بين الجواب المعتمد من القاعدة المحلية والجواب المولد بالذكاء الخارجي (Gemini / Groq)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCompareModalOpen(false)}
+                className="p-1.5 rounded-lg text-owly-text-light hover:text-owly-text hover:bg-owly-border/40 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Question Input Box */}
+              <div className="p-4 bg-owly-bg border border-owly-border rounded-xl space-y-3">
+                <label className="block text-xs font-bold text-owly-text flex items-center justify-between">
+                  <span>نص السؤال المراد اختباره ومقارنته:</span>
+                  {compareTargetItem && (
+                    <span className="text-[11px] font-normal text-owly-text-light">
+                      السائل: {compareTargetItem.customerName} {compareTargetItem.customerContact ? `(${compareTargetItem.customerContact})` : ""}
+                    </span>
+                  )}
+                </label>
+                <textarea
+                  value={compareQuestion}
+                  onChange={(e) => setCompareQuestion(e.target.value)}
+                  placeholder="اكتب أو عدل السؤال المراد اختباره..."
+                  rows={2}
+                  className="w-full px-3 py-2 text-xs bg-owly-surface border border-owly-border rounded-lg outline-none text-owly-text focus:border-purple-500 transition resize-none font-medium"
+                />
+
+                {/* Test Action Buttons */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-owly-text-light ml-1">نوع الفحص:</span>
+                    <button
+                      type="button"
+                      disabled={compareLoading || !compareQuestion.trim()}
+                      onClick={() => void runCompare(compareQuestion, "both")}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-bold rounded-lg border transition inline-flex items-center gap-1",
+                        compareMode === "both"
+                          ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                          : "bg-owly-surface text-owly-text border-owly-border hover:bg-purple-50 dark:hover:bg-purple-950/20"
+                      )}
+                    >
+                      <Scale className="h-3.5 w-3.5" />
+                      <span>⚖️ مقارنة الاثنين معاً (Recommandé)</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={compareLoading || !compareQuestion.trim()}
+                      onClick={() => void runCompare(compareQuestion, "local_only")}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-semibold rounded-lg border transition inline-flex items-center gap-1",
+                        compareMode === "local_only"
+                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                          : "bg-owly-surface text-owly-text border-owly-border hover:bg-blue-50 dark:hover:bg-blue-950/20"
+                      )}
+                    >
+                      <span>🏛️ بدون ذكاء خارجي فقط</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={compareLoading || !compareQuestion.trim()}
+                      onClick={() => void runCompare(compareQuestion, "external_only")}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-semibold rounded-lg border transition inline-flex items-center gap-1",
+                        compareMode === "external_only"
+                          ? "bg-amber-600 text-white border-amber-600 shadow-sm"
+                          : "bg-owly-surface text-owly-text border-owly-border hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                      )}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>✨ مع الذكاء الخارجي فقط</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={compareLoading || !compareQuestion.trim()}
+                    onClick={() => void runCompare(compareQuestion, compareMode)}
+                    className="px-4 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 rounded-lg shadow-sm transition disabled:opacity-50 inline-flex items-center gap-1.5"
+                  >
+                    {compareLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    <span>إعادة التشغيل</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Loading Indicator */}
+              {compareLoading && (
+                <div className="p-8 text-center bg-owly-bg/50 border border-owly-border rounded-xl space-y-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-purple-600 mx-auto" />
+                  <p className="text-xs font-bold text-owly-text">
+                    جاري الاستعلام من قاعدة المعرفة المحلية ومحرك الذكاء الاصطناعي...
+                  </p>
+                  <p className="text-[11px] text-owly-text-light">
+                    يتم تحليل السؤال بشكل متوازٍ لرصد الاختلاف في النتائج بدقة.
+                  </p>
+                </div>
+              )}
+
+              {/* Results View */}
+              {!compareLoading && compareData && (
+                <div className="space-y-4">
+                  {/* Difference Summary Alert */}
+                  {compareData.differenceSummary && (
+                    <div className="p-3.5 bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-500/30 rounded-xl flex items-start gap-3 shadow-sm">
+                      <Scale className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-xs font-bold text-purple-900 dark:text-purple-300 block">
+                          الخلاصة التحليلية للفرق:
+                        </span>
+                        <p className="text-xs text-owly-text leading-5 mt-0.5">
+                          {compareData.differenceSummary}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Side-by-Side Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Card 1: Sans IA Externe (Local KB) */}
+                    {compareData.local && (
+                      <div className="border border-owly-border bg-owly-bg rounded-xl overflow-hidden flex flex-col shadow-sm">
+                        <div className="px-4 py-3 border-b border-owly-border bg-owly-surface flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🏛️</span>
+                            <div>
+                              <h4 className="text-xs font-bold text-owly-text">
+                                بدون ذكاء خارجي (Sans IA Externe)
+                              </h4>
+                              <p className="text-[10px] text-owly-text-light">
+                                قاعدة المعرفة المحلية المعتمدة فقط
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={cn(
+                              "px-2 py-0.5 text-[10px] font-bold rounded-md border",
+                              compareData.local.hasAnswer
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
+                            )}
+                          >
+                            {compareData.local.hasAnswer ? "✅ إجابة متوفرة" : "❌ غير متوفر (اعتذار)"}
+                          </span>
+                        </div>
+
+                        <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+                          <div>
+                            <div className="text-[11px] font-medium text-owly-text-light mb-1.5 flex items-center gap-1">
+                              <span>الحالة:</span>
+                              <span className="text-owly-text font-bold">{compareData.local.message}</span>
+                            </div>
+                            <div className={cn(
+                              "p-3 rounded-lg text-xs leading-6 whitespace-pre-wrap font-normal border",
+                              compareData.local.hasAnswer
+                                ? "bg-emerald-50/40 border-emerald-200 text-owly-text"
+                                : "bg-red-50/30 border-red-200 text-red-900 dark:text-red-300"
+                            )}>
+                              {compareData.local.answer || "لم يتم إرجاع أي نص."}
+                            </div>
+                          </div>
+                          <div className="pt-2 text-[11px] text-owly-text-light border-t border-owly-border/50">
+                            هذا هو الرد الذي سيتلقاه المنخرط في حال كانت ميزة الذكاء الخارجي معطلة.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Card 2: Avec IA Externe (Gemini / Groq) */}
+                    {compareData.external && (
+                      <div className="border border-purple-200 dark:border-purple-900/60 bg-purple-50/20 rounded-xl overflow-hidden flex flex-col shadow-sm">
+                        <div className="px-4 py-3 border-b border-purple-200 dark:border-purple-900/60 bg-purple-500/10 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">✨</span>
+                            <div>
+                              <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300">
+                                مع الذكاء الخارجي (Avec IA Externe)
+                              </h4>
+                              <p className="text-[10px] text-purple-700 dark:text-purple-400 font-medium">
+                                {compareData.external.provider.toUpperCase()} ({compareData.external.model})
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={cn(
+                              "px-2 py-0.5 text-[10px] font-bold rounded-md border",
+                              compareData.external.hasAnswer
+                                ? "bg-purple-100 text-purple-800 border-purple-300"
+                                : "bg-gray-100 text-gray-700 border-gray-300"
+                            )}
+                          >
+                            {compareData.external.hasAnswer ? "✨ إجابة مولدة فورية" : "⚠️ غير متاح"}
+                          </span>
+                        </div>
+
+                        <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                          <div>
+                            <div className="text-[11px] font-medium text-purple-900 dark:text-purple-300 mb-1.5 flex items-center gap-1">
+                              <span>الحالة:</span>
+                              <span className="font-bold">{compareData.external.message}</span>
+                            </div>
+                            <div className="p-3 bg-owly-surface border border-purple-200 dark:border-purple-800/50 rounded-lg text-xs text-owly-text leading-6 whitespace-pre-wrap font-normal max-h-64 overflow-y-auto">
+                              {compareData.external.answer || "لا تتوفر إجابة مولدة."}
+                            </div>
+                          </div>
+
+                          {compareData.external.hasAnswer && (
+                            <div className="pt-2 border-t border-purple-200/60 dark:border-purple-900/40">
+                              <button
+                                type="button"
+                                onClick={() => handleAdoptExternalAnswerToKnowledge()}
+                                className="w-full py-2.5 px-3 text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 rounded-lg shadow-sm transition inline-flex items-center justify-center gap-1.5"
+                              >
+                                <BookPlus className="h-4 w-4" />
+                                <span>اعتماد هذه الإجابة وحفظها في قاعدة المعرفة (1-Click)</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-owly-border bg-owly-bg flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setCompareModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-owly-text-light hover:text-owly-text rounded-lg transition"
+              >
+                إغلاق النافذة
+              </button>
+            </div>
           </div>
         </div>
       )}
