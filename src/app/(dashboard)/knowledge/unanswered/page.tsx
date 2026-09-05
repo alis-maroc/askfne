@@ -984,257 +984,272 @@ export default function UnansweredQuestionsPage() {
                   <div
                     key={idx}
                     className={cn(
-                      "p-4 sm:p-5 hover:bg-owly-bg/50 transition flex flex-col sm:flex-row sm:items-start justify-between gap-4",
+                      "p-4 sm:p-5 hover:bg-owly-bg/40 transition flex flex-col gap-3.5",
                       isSelected && "bg-owly-primary/5"
                     )}
                   >
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <button
-                        onClick={() => toggleSelectQuestion(item.question)}
-                        className="mt-1 text-owly-text-light hover:text-owly-text transition shrink-0"
-                        title={isSelected ? "إلغاء التحديد" : "تحديد"}
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="h-4 w-4 text-owly-primary" />
-                        ) : (
-                          <Square className="h-4 w-4" />
-                        )}
-                      </button>
+                    {/* 1. Header Row: Checkbox + Question + Badges + Primary Action Buttons */}
+                    <div className="flex items-start justify-between gap-4 flex-wrap sm:flex-nowrap">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <button
+                          onClick={() => toggleSelectQuestion(item.question)}
+                          className="mt-1 text-owly-text-light hover:text-owly-text transition shrink-0"
+                          title={isSelected ? "إلغاء التحديد" : "تحديد"}
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="h-4 w-4 text-owly-primary" />
+                          ) : (
+                            <Square className="h-4 w-4" />
+                          )}
+                        </button>
 
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-base text-owly-text break-words">
-                            {item.question}
-                          </span>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                            {item.count} {item.count > 1 ? "مرات" : "مرة"}
-                          </span>
-                          {item.sourceType === "external_ai" && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300 dark:border-purple-800 shadow-sm">
-                              ✨ إجابة ذكاء خارجي (IA Externe)
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-base text-owly-text break-words">
+                              {item.question}
                             </span>
-                          )}
-                          {item.sourceType === "manual" && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
-                              ✍️ تحويل يدوي
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                              {item.count} {item.count > 1 ? "مرات" : "مرة"}
                             </span>
-                          )}
-                          {item.sourceType === "feedback" && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
-                              👎 تقييم سلبي
-                            </span>
-                          )}
-                          {item.sourceType === "refusal" && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                              🤖 غياب معلومة
-                            </span>
-                          )}
-                          {item.customerContact && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              {item.customerContact}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-4 text-xs text-owly-text-light flex-wrap">
-                          <span className="flex items-center gap-1">
-                            <Radio className="h-3.5 w-3.5" />
-                            {item.channels.join(", ")}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3.5 w-3.5" />
-                            آخر سؤال: {new Date(item.lastAskedAt).toLocaleDateString("fr-FR", {
-                              day: "numeric",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                          {item.conversationId && (
-                            <Link
-                              href={`/conversations?id=${item.conversationId}`}
-                              className="text-owly-primary hover:underline"
-                            >
-                              عرض المحادثة
-                            </Link>
-                          )}
-                        </div>
-
-                        {item.lastResponse && (
-                          <div className={cn(
-                            "text-xs rounded-xl border mt-2 overflow-hidden transition-all",
-                            item.sourceType === "external_ai"
-                              ? "bg-purple-50/50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800/60"
-                              : "bg-owly-bg border-owly-border/60"
-                          )}>
-                            {item.sourceType === "external_ai" ? (
-                              <div>
-                                <div className="px-3 py-1.5 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-200/60 dark:border-purple-800/40 flex items-center justify-between gap-2 flex-wrap">
-                                  <span className="font-bold text-[11px] text-purple-700 dark:text-purple-300 flex items-center gap-1">
-                                    <Sparkles className="h-3.5 w-3.5" />
-                                    الرد المقترح من الذكاء الخارجي
-                                  </span>
-
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleExpandResponse(item.question)}
-                                      className="text-[11px] font-bold text-purple-700 hover:text-purple-900 dark:text-purple-300 inline-flex items-center gap-1 transition cursor-pointer"
-                                    >
-                                      {expandedResponseKeys.has(item.question) ? (
-                                        <>
-                                          <ChevronUp className="h-3.5 w-3.5" />
-                                          <span>طي الرد (Réduire)</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <ChevronDown className="h-3.5 w-3.5" />
-                                          <span>عرض الرد كاملاً (Afficher tout)</span>
-                                        </>
-                                      )}
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => openAddToKnowledgeModal(item)}
-                                      className="px-2 py-0.5 text-[10px] font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-md shadow-xs transition"
-                                      title="اعتماد هذا الجواب وحفظه في قاعدة المعرفة"
-                                    >
-                                      اعتماد في القاعدة
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="p-3">
-                                  {expandedResponseKeys.has(item.question) ? (
-                                    <div className="max-h-56 overflow-y-auto pr-1 text-xs text-owly-text leading-6 whitespace-pre-wrap rounded-lg bg-owly-surface/70 border border-owly-border/50 p-3 shadow-inner font-sans">
-                                      {item.lastResponse}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs leading-relaxed text-owly-text line-clamp-2">
-                                      {item.lastResponse}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="px-3 py-2 flex items-center justify-between gap-2">
-                                <p className="line-clamp-1 italic text-xs text-owly-text-light/80">
-                                  جواب المساعد السابق: "{item.lastResponse}"
-                                </p>
-                                {item.lastResponse.length > 80 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleExpandResponse(item.question)}
-                                    className="text-[10px] text-owly-primary hover:underline shrink-0"
-                                  >
-                                    {expandedResponseKeys.has(item.question) ? "طي" : "عرض"}
-                                  </button>
-                                )}
-                              </div>
+                            {item.sourceType === "external_ai" && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300 dark:border-purple-800 shadow-xs">
+                                ✨ إجابة ذكاء خارجي (IA Externe)
+                              </span>
                             )}
-                            {item.sourceType !== "external_ai" && expandedResponseKeys.has(item.question) && (
-                              <div className="p-3 pt-0 text-xs text-owly-text leading-6 whitespace-pre-wrap max-h-48 overflow-y-auto">
-                                {item.lastResponse}
-                              </div>
+                            {item.sourceType === "manual" && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
+                                ✍️ تحويل يدوي
+                              </span>
+                            )}
+                            {item.sourceType === "feedback" && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                                👎 تقييم سلبي
+                              </span>
+                            )}
+                            {item.sourceType === "refusal" && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                🤖 غياب معلومة
+                              </span>
+                            )}
+                            {item.customerContact && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {item.customerContact}
+                              </span>
                             )}
                           </div>
-                        )}
+                        </div>
+                      </div>
 
-                        {item.isHeld && (
-                          <div className="flex items-center gap-2 text-xs bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-lg mt-1.5">
-                            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-                            <span className="font-semibold">
-                              ⚠️ معلّق: تم إرسال تنبيه بتصويب الجواب، والرد التوقيفي مفعّل تلقائياً لأي سائل جديد حتى توفر الجواب الرسمي
-                            </span>
-                          </div>
-                        )}
+                      {/* Top Right: Primary 1-Click Action Buttons */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => openAddToKnowledgeModal(item)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition"
+                          title="إضافة واعتماد الإجابة في قاعدة المعرفة"
+                        >
+                          <BookPlus className="h-3.5 w-3.5" />
+                          <span>إضافة للقاعدة</span>
+                        </button>
+
+                        <button
+                          onClick={() => openCompareModal(item)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg shadow-sm transition"
+                          title="مقارنة الجواب مع وبدون الذكاء الخارجي"
+                        >
+                          <Scale className="h-3.5 w-3.5 text-purple-600" />
+                          <span>مقارنة (مع/بدون IA)</span>
+                        </button>
+
+                        <button
+                          onClick={() => void handleDismiss(item)}
+                          disabled={dismissingKey === item.question}
+                          title="حذف / تجاهل هذا السؤال"
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition disabled:opacity-50"
+                        >
+                          {dismissingKey === item.question ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap justify-end">
-                      {/* 0. Warning & Holding Button */}
-                      <button
-                        onClick={() => openWarningModal(item)}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg shadow-sm transition border",
-                          item.isHeld
-                            ? "text-amber-900 bg-amber-100 hover:bg-amber-200 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
-                            : "text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200"
+                    {/* 2. Full-Width Middle Row: AI Response Box (w-full, spacious, no compression!) */}
+                    {item.lastResponse && (
+                      <div className="w-full">
+                        <div className={cn(
+                          "text-xs rounded-xl border overflow-hidden transition-all",
+                          item.sourceType === "external_ai"
+                            ? "bg-purple-50/40 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800/60"
+                            : "bg-owly-bg border-owly-border/60"
+                        )}>
+                          {item.sourceType === "external_ai" ? (
+                            <div>
+                              <div className="px-3.5 py-2 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-200/60 dark:border-purple-800/40 flex items-center justify-between gap-2 flex-wrap">
+                                <span className="font-bold text-[11px] text-purple-800 dark:text-purple-300 flex items-center gap-1.5">
+                                  <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+                                  <span>الرد المقترح من الذكاء الخارجي (Gemini) :</span>
+                                </span>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleExpandResponse(item.question)}
+                                    className="text-[11px] font-bold text-purple-700 hover:text-purple-900 dark:text-purple-300 inline-flex items-center gap-1 transition cursor-pointer"
+                                  >
+                                    {expandedResponseKeys.has(item.question) ? (
+                                      <>
+                                        <ChevronUp className="h-3.5 w-3.5" />
+                                        <span>طي الرد (Réduire)</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="h-3.5 w-3.5" />
+                                        <span>عرض الرد كاملاً (Afficher tout)</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => openAddToKnowledgeModal(item)}
+                                    className="px-2.5 py-1 text-[11px] font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-md shadow-xs transition inline-flex items-center gap-1"
+                                    title="اعتماد هذا الجواب وحفظه في قاعدة المعرفة"
+                                  >
+                                    <BookPlus className="h-3 w-3" />
+                                    <span>اعتماد في القاعدة</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="p-3.5">
+                                {expandedResponseKeys.has(item.question) ? (
+                                  <div className="max-h-80 overflow-y-auto overflow-x-auto text-xs text-owly-text leading-relaxed whitespace-pre-wrap rounded-lg bg-owly-surface/90 border border-owly-border/50 p-4 shadow-inner font-sans">
+                                    {item.lastResponse}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs leading-relaxed text-owly-text line-clamp-2">
+                                    {item.lastResponse}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="px-3.5 py-2 flex items-center justify-between gap-2">
+                              <p className="line-clamp-1 italic text-xs text-owly-text-light/80">
+                                جواب المساعد السابق: "{item.lastResponse}"
+                              </p>
+                              {item.lastResponse.length > 80 && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandResponse(item.question)}
+                                  className="text-[10px] text-owly-primary hover:underline shrink-0"
+                                >
+                                  {expandedResponseKeys.has(item.question) ? "طي" : "عرض"}
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {item.sourceType !== "external_ai" && expandedResponseKeys.has(item.question) && (
+                            <div className="p-3 pt-0 text-xs text-owly-text leading-6 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                              {item.lastResponse}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Holding Notice if active */}
+                    {item.isHeld && (
+                      <div className="flex items-center gap-2 text-xs bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/30 px-3.5 py-2 rounded-xl">
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                        <span className="font-semibold">
+                          ⚠️ معلّق: تم إرسال تنبيه بتصويب الجواب، والرد التوقيفي مفعّل تلقائياً لأي سائل جديد حتى توفر الجواب الرسمي
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 3. Bottom Row: Metadata & Secondary Tools */}
+                    <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-owly-border/40 text-xs text-owly-text-light flex-wrap">
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <Radio className="h-3.5 w-3.5" />
+                          {item.channels.join(", ")}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          آخر سؤال: {new Date(item.lastAskedAt).toLocaleDateString("fr-FR", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        {item.conversationId && (
+                          <Link
+                            href={`/conversations?id=${item.conversationId}`}
+                            className="text-owly-primary hover:underline font-semibold"
+                          >
+                            عرض المحادثة
+                          </Link>
                         )}
-                        title={
-                          item.isHeld
-                            ? "تعديل إشعار التصويب أو رفع التجميد عن هذا السؤال"
-                            : "إشعار المنخرط بتصويب الجواب الخاطئ وتجميد السؤال برد توقيفي حتى توفر الإجابة الصحيحة"
-                        }
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                        <span>{item.isHeld ? "معلّق (تعديل)" : "تصويب وتجميد"}</span>
-                      </button>
+                      </div>
 
-                      {/* Compare Button: Test with vs without External AI */}
-                      <button
-                        onClick={() => openCompareModal(item)}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg shadow-sm transition"
-                        title="مقارنة الجواب مع الذكاء الخارجي وبدونه لرؤية الفرق مباشرة"
-                      >
-                        <Scale className="h-3.5 w-3.5 text-purple-600" />
-                        <span>مقارنة (مع/بدون IA)</span>
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Secondary Tools: Warning/Hold, Recheck, AI Draft, Manual */}
+                        <button
+                          onClick={() => openWarningModal(item)}
+                          className={cn(
+                            "inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg transition border",
+                            item.isHeld
+                              ? "text-amber-900 bg-amber-100 hover:bg-amber-200 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                              : "text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200"
+                          )}
+                          title="تصويب الجواب أو تجميد السؤال"
+                        >
+                          <AlertTriangle className="h-3 w-3 text-amber-600" />
+                          <span>{item.isHeld ? "معلّق (تعديل)" : "تصويب وتجميد"}</span>
+                        </button>
 
-                      {/* 1. Re-check Button against updated Knowledge Base */}
-                      <button
-                        onClick={() => void handleRecheck(item)}
-                        disabled={recheckingKey === item.question}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg shadow-sm transition disabled:opacity-50"
-                        title="إعادة اختبار السؤال الآن ضد قاعدة المعرفة المحدثة لمعرفة إن توفر الجواب"
-                      >
-                        {recheckingKey === item.question ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        )}
-                        <span>إعادة فحص (Re-tester)</span>
-                      </button>
+                        <button
+                          onClick={() => void handleRecheck(item)}
+                          disabled={recheckingKey === item.question}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition disabled:opacity-50"
+                          title="إعادة اختبار السؤال ضد قاعدة المعرفة"
+                        >
+                          {recheckingKey === item.question ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RotateCcw className="h-3 w-3" />
+                          )}
+                          <span>إعادة فحص</span>
+                        </button>
 
-                      {/* 2. 1-Click AI Draft Button */}
-                      <button
-                        onClick={() => void handleGenerateDraft(item)}
-                        disabled={draftingKey === item.question}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 rounded-lg shadow-sm transition disabled:opacity-50"
-                        title="توليد إجابة مقترحة فورية بالذكاء الاصطناعي مع التصنيف التلقائي"
-                      >
-                        {draftingKey === item.question ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-3.5 w-3.5" />
-                        )}
-                        <span>توليد ذكي (IA)</span>
-                      </button>
+                        <button
+                          onClick={() => void handleGenerateDraft(item)}
+                          disabled={draftingKey === item.question}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition disabled:opacity-50"
+                          title="توليد مسودة بالذكاء الاصطناعي"
+                        >
+                          {draftingKey === item.question ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3 w-3 text-amber-600" />
+                          )}
+                          <span>توليد مسودة</span>
+                        </button>
 
-                      {/* 3. Manual Add Button */}
-                      <button
-                        onClick={() => openAddToKnowledgeModal(item)}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-owly-text bg-owly-bg hover:bg-owly-surface border border-owly-border rounded-lg transition"
-                        title="كتابة إجابة يدوية"
-                      >
-                        <BookPlus className="h-3.5 w-3.5 text-owly-primary" />
-                        <span className="hidden sm:inline">يدوي</span>
-                      </button>
-
-                      {/* 4. Dismiss Button */}
-                      <button
-                        onClick={() => void handleDismiss(item)}
-                        disabled={dismissingKey === item.question}
-                        title="حذف / تجاهل هذا السؤال"
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition disabled:opacity-50"
-                      >
-                        {dismissingKey === item.question ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
+                        <button
+                          onClick={() => openAddToKnowledgeModal(item)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-owly-text-light hover:text-owly-text border border-owly-border rounded-lg transition"
+                          title="كتابة إجابة يدوية"
+                        >
+                          <BookPlus className="h-3 w-3 text-owly-primary" />
+                          <span>يدوي</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
