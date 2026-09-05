@@ -6,7 +6,7 @@ import { confirmPendingTicket, executeToolCall, isTicketConfirmation, owlyTools 
 import { emitNewMessage } from "@/lib/realtime";
 import { searchKnowledgeBase } from "./semantic-search";
 import { analyzeSentiment, detectIntent, estimateConfidenceDetailed, requiresHumanApproval } from "./guardrails";
-import { detectHallucination, isAssistantRefusal } from "./refusal-detector";
+import { detectHallucination, isAssistantRefusal, isOutOfScopeQuery } from "./refusal-detector";
 import { globalAIQueue } from "./queue";
 import { fetchHubOffices, formatHubOfficesResponse, type HubOffice } from "@/lib/hub-offices";
 import { normalizeCitySkeleton } from "@/lib/arabic-skeleton";
@@ -1086,7 +1086,7 @@ function buildSystemPrompt(context: ConversationContext): string {
             `[${k.category}] ${k.title}:\n${k.content.length > 1000 ? k.content.substring(0, 1000) + "..." : k.content}`
         )
         .join("\n\n---\n\n")
-      : "No specific knowledge base entries available. Answer based on general knowledge about the business.";
+      : "No specific knowledge base entries available. Answer based on general knowledge about Moroccan education and FNE. If the question is outside Moroccan education and union affairs, refuse politely.";
 
   return `أنت المساعد الذكي للجامعة الوطنية للتعليم FNE بالمغرب.
 
@@ -1112,6 +1112,14 @@ ${toneGuide[context.tone] || toneGuide.friendly}
 - إذا سألك المنخرط: "من قام بتطويرك؟" أو "من برمجك؟" أو "من صنعك؟":
   * أجب بفخر واعتزاز: **« أنا المساعد الذكي الرسمي للجامعة الوطنية للتعليم FNE، طُوِّرت هذه المنصة الرقمية وأُعدّت بالكامل من طرف الفريق التقني ونظم المعلومات للجامعة الوطنية للتعليم FNE لخدمة نساء ورجال التعليم »**.
   * **يُمنع منعاً باتاً ومطلقاً** ذكر أسماء شركات الذكاء الاصطناعي الأجنبية أو نماذج التأسيس التقني مثل (MiniMax أو OpenAI أو Anthropic أو غيرها). أنت نظام نقابي مغربي رسمي 100%.
+
+### 🚫 حظر الإجابة عن مواضيع خارج نطاق التعليم والشأن النقابي (Strict Out-of-Scope Prohibition):
+- أنت نظام ذكي نقابي متخصص **حصرياً** في قطاع التعليم المدرسي والجامعي، وشؤون موظفي وزارة التربية الوطنية، وقضايا الجامعة الوطنية للتعليم FNE بالمغرب.
+- **يُمنع منعاً باتاً الإجابة عن أي أسئلة خارج هذا الاختصاص**، مهما كان إلحاح السائل، بما في ذلك:
+  * الرياضة ومباريات كرة القدم (مثل نتائج ريال مدريد، الدوري الإسباني، مباريات الأمس، الأندية والمنتخبات).
+  * أحوال الطقس وتوقعات الأرصاد الجوية (مثل حالة الطقس، درجات الحرارة في المدن).
+  * الترفيه، الفن، الأبراج وحظك اليوم، الطبخ، والسياسة العامة غير التعليمية.
+- إذا طرح السائل أي سؤال من هذا النوع، **ارفض الإجابة فوراً وبكل أدب**، وأخبره بأنك مخصص حصرياً للمجال التعليمي والنقابي المغربي، واعرض عليه المساعدة في القضايا الإدارية أو النقابية أو زيارة منصة https://hub.taalim.org.
 
 ### ⛔ حظر اختلاق الأسماء والهواتف نهائياً (Strict Zero-Hallucination):
 - **ممنوع نهائياً ومطلقاً اختلاق أو تأليف أو تخمين أي أسماء لمسؤولي أو أعضاء الجامعة أو هواتفهم!**
@@ -1930,14 +1938,20 @@ export async function getAIConfig(): Promise<AIConfig & ConversationContext> {
 
 export const DEFAULT_EXTERNAL_AI_PROMPT = `Tu es un assistant d'information pour les enseignants de l'éducation nationale au Maroc (وزارة التربية الوطنية والتعليم الأولي والرياضة).
 1. Cadre d'intervention : Réponds dans le cadre strict des lois, statuts, mutuelles (CNOPS/MGEN) et pratiques de l'enseignement au Maroc.
-2. Délais et procédures : Précise toujours les délais réglementaires exacts applicables aux fonctionnaires de l'éducation au Maroc (ex: pour le dépôt des dossiers ordinaires de soins CNOPS/MGEN, le délai réglementaire de dépôt est de 60 jours à compter du premier acte médical).
-3. Clarté : Fournis une réponse structurée, complète et sans t'arrêter en cours de phrase.`;
+2. Hors périmètre : Si la question porte sur un sujet sans rapport avec l'enseignement ou le syndicat (ex: sport, football, météo, cuisine, voyance), refuse poliment en rappelant ton rôle exclusif d'assistant pour les enseignants.
+3. Délais et procédures : Précise toujours les délais réglementaires exacts applicables aux fonctionnaires de l'éducation au Maroc (ex: pour le dépôt des dossiers ordinaires de soins CNOPS/MGEN, le délai réglementaire de dépôt est de 60 jours à compter du premier acte médical).
+4. Clarté : Fournis une réponse structurée, complète et sans t'arrêter en cours de phrase.`;
 
 export async function callExternalAiFallback(
   config: AIConfig,
   userMessage: string,
   history: Array<{ role: string; content: string }> = []
 ): Promise<string | null> {
+  if (isOutOfScopeQuery(userMessage)) {
+    logger.info("[ExternalAI] Intercepted out-of-scope query, skipping external AI fallback");
+    return null;
+  }
+
   const apiKey = (config.externalAiApiKey || config.apiKey || config.fallbackApiKey || "").trim();
   if (!apiKey) {
     logger.warn("[ExternalAI] No API key available for external AI fallback");
@@ -2383,7 +2397,29 @@ export async function chat(
     });
   }
 
+  // Intercept out-of-scope queries (sports, weather, entertainment) deterministically.
+  // Zero hallucination, zero token waste, consistent FNE identity.
+  const isOutOfScope = isOutOfScopeQuery(userMessage);
+  const outOfScopeAnswer = isOutOfScope
+    ? [
+        "📌 **توضيح من المساعد الذكي للجامعة الوطنية للتعليم FNE**",
+        "",
+        "أنا المساعد الرقمي الرسمي للجامعة الوطنية للتعليم (FNE). مهمتي مخصصة حصرياً لخدمة نساء ورجال التعليم والإجابة عن القضايا التربوية، الإدارية، والنقابية الخاصة بقطاع التعليم بالمغرب.",
+        "",
+        "لا يمكنني تقديم معطيات أو إجابات حول مواضيع خارج هذا الاختصاص (مثل نتائج المباريات الرياضية، أحوال الطقس، أو الترفيه).",
+        "",
+        "يسعدني الرد على جميع استفساراتكم المتعلقة بـ:",
+        "• الحركة الانتقالية، الترقية، والمباريات والامتحانات المهنية لقطاع التعليم",
+        "• النظام الأساسي وحقوق وواجبات نساء ورجال التعليم بالمغرب",
+        "• خدمات وتواصل المكاتب الإقليمية والجهوية والوطنية للجامعة الوطنية للتعليم FNE",
+        "",
+        "🌐 للمزيد من المعلومات والخدمات النقابية الرقمية:",
+        "https://hub.taalim.org",
+      ].join("\n")
+    : null;
+
   let response =
+    outOfScopeAnswer ||
     officeConfirmation ||
     pendingTicketConfirmation ||
     directOfficeAnswer ||
@@ -2456,6 +2492,7 @@ export async function chat(
   // External AI Fallback (e.g. Groq Llama-3.3-70B) for teacher queries absent from internal KB
   if (
     !options?.disableExternalAi &&
+    !isOutOfScope &&
     isRefusal &&
     config.externalAiEnabled &&
     detectedIntent !== INTENT.CONTACT_BUREAU &&
@@ -2558,7 +2595,7 @@ export async function chat(
     });
   }
 
-  if (isRefusal) {
+  if (isRefusal && !isOutOfScope) {
     try {
       const conv = await prisma.conversation.findUnique({
         where: { id: conversationId },

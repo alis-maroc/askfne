@@ -34,6 +34,11 @@ export const ARABIC_REFUSAL_PATTERNS: RegExp[] = [
 
   // 6. Referral due to inability to browse or confirm
   /لا\s*أملك\s*(?:إمكانية\s*التصفح|القدرة\s*على\s*التأكد)/i,
+
+  // 7. Out-of-scope refusal
+  /مخصص\s*حصرياً\s*(?:لقضايا|للمجال|للشأن)/i,
+  /خارج\s*(?:هذا\s*)?(?:الاختصاص|النطاق)/i,
+  /لا\s*يمكنني\s*تقديم\s*(?:معطيات|إجابات)\s*حول\s*مواضيع\s*خارج/i,
 ];
 
 export const MULTILINGUAL_REFUSAL_PATTERNS: RegExp[] = [
@@ -145,6 +150,39 @@ const GREETING_FILLER_WORDS = new Set([
 ]);
 
 /**
+ * Detects whether a user question is completely out of scope for the FNE educational & trade-union chatbot
+ * (e.g. sports/football matches, weather/météo, horoscopes/entertainment).
+ * Safely preserves legitimate educational queries (e.g. مباراة التعليم, مباراة الترقية, مباراة التفتيش).
+ */
+export function isOutOfScopeQuery(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const raw = text.toLowerCase();
+
+  // If it mentions education or union keywords, it's ALWAYS in-scope (e.g. مباراة التعليم, مباراة الترقية, مباراة التفتيش)
+  const isEducational = /(?:تعليم|تربية|ترقية|وزارة|أستاذ|مدرس|تلميذ|مدرسة|ثانوي|إعدادي|ابتدائي|أكاديمية|مديرية|تفتيش|إدارة تربوية|مركز جهوي|crmef|متصرف|ملحق|نظام أساسي|نقابة|fne|منخرط|شهادة|تقاعد|رخصة|استيداع|تعاقد|تعويض)/i.test(raw);
+  if (isEducational) return false;
+
+  // 1. Weather / Météo (e.g. حالة الطقس في تيزنيت, météo, درجة الحرارة)
+  const isWeather = /(?:حالة الطقس|أحوال الطقس|الأحوال الجوية|درجة الحرارة|درجات الحرارة|توقعات الطقس|أمطار اليوم|الطقس في|طقس اليوم|طقس غدا|طقس أمس|météo|meteo\b|weather\b|forecast)/i.test(raw);
+  if (isWeather) return true;
+
+  // 2. Football & Sports (e.g. نتيجة مباراة ريال مدريد, برشلونة, دوري أبطال أوروبا, كرة القدم)
+  const isSports = /(?:ريال مدريد|برشلونة|مانشستر|ليفربول|بايرن|كرة القدم|دوري أبطال|كأس العالم|المنتخب الوطني|كأس إفريقيا|كأس العرش|كلاسيكو|ديربي|أهداف مباراة|نتيجة مباراة|ماتش البارح|ماتش اليوم|ترتيب البطولة|ترتيب الدوري|الدوري الإسباني|الدوري الإنجليزي|champions league|real madrid|fc barcelona)/i.test(raw);
+  if (isSports) return true;
+
+  // If "مباراة" or "ماتش" is used with sports/match terms
+  if (/(?:مباراة|مباريات|ماتش)/i.test(raw) && /(?:أمس|اليوم|غدا|البارح|كرة|فريق|دوري|أهداف|شوط|لاعب|كأس|بطولة|ريال|كيرات)/i.test(raw)) {
+    return true;
+  }
+
+  // 3. Horoscope & Astrology
+  const isAstrology = /(?:حظك اليوم|الأبراج اليومية|برج الحمل|برج الثور|برج الجوزاء|برج السرطان|برج الأسد|برج العذراء|برج الميزان|برج العقرب|برج القوس|برج الجدي|برج الدلو|برج الحوت|horoscope)/i.test(raw);
+  if (isAstrology) return true;
+
+  return false;
+}
+
+/**
  * Determines whether a user message represents a legitimate, substantive knowledge question,
  * filtering out greetings, pleasantries, navigation commands, digits, thanks, and technical noise.
  */
@@ -152,6 +190,11 @@ export function isLegitimateKnowledgeQuestion(text: string | null | undefined): 
   if (!text) return false;
   const raw = text.trim();
   if (raw.length < 3) return false;
+
+  // Filter out non-educational out-of-scope topics (sports, weather, astrology)
+  if (isOutOfScopeQuery(raw)) {
+    return false;
+  }
 
   // Normalize for checks
   const normalized = raw
