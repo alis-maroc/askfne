@@ -23,6 +23,7 @@ import {
   Trash2,
   MessageSquareWarning,
   Layers,
+  Dices,
 } from "lucide-react";
 
 interface TestCase {
@@ -83,6 +84,8 @@ export default function AiTestLabPage() {
   const [customQuestion, setCustomQuestion] = useState("");
   const [customResult, setCustomResult] = useState<TestResult | null>(null);
   const [isCustomRunning, setIsCustomRunning] = useState(false);
+  const [isGeneratingOutOfScope, setIsGeneratingOutOfScope] = useState(false);
+  const [generatedTopic, setGeneratedTopic] = useState<string | null>(null);
 
   // Load Test Suite & Flagged Count
   const loadTestSuite = useCallback(async () => {
@@ -186,6 +189,29 @@ export default function AiTestLabPage() {
       console.error("Custom test failed:", err);
     } finally {
       setIsCustomRunning(false);
+    }
+  };
+
+  // Generate random out of scope question
+  const generateOutOfScopeQuestion = async () => {
+    setIsGeneratingOutOfScope(true);
+    try {
+      const res = await fetch("/api/ai-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate_out_of_scope" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.question) {
+          setCustomQuestion(data.question);
+          setGeneratedTopic(`${data.icon || "🎲"} ${data.topic || "سؤال خارج النطاق"}`);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to generate out-of-scope question:", err);
+    } finally {
+      setIsGeneratingOutOfScope(false);
     }
   };
 
@@ -489,17 +515,39 @@ export default function AiTestLabPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400 self-center">🔥 فحص خارج النطاق (Hors-Périmètre):</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400">🔥 فحص خارج النطاق (Hors-Périmètre):</span>
+                    <button
+                      onClick={generateOutOfScopeQuestion}
+                      disabled={isGeneratingOutOfScope}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black bg-gradient-to-r from-amber-500 to-red-600 text-white shadow-sm hover:from-amber-600 hover:to-red-700 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                      title="توليد سؤال عشوائي جديد خارج النطاق (رياضة، طقس، طبخ، ميكانيك، كريبتو...)"
+                    >
+                      <Dices className={`w-3.5 h-3.5 ${isGeneratingOutOfScope ? "animate-spin" : ""}`} />
+                      <span>توليد سؤال جديد 🎲</span>
+                    </button>
+                    {generatedTopic && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 animate-fadeIn">
+                        {generatedTopic}
+                      </span>
+                    )}
+                  </div>
+
                   {[
                     { text: "ما هي نتيجة مباراة ريال مدريد أمس؟", label: "⚽ رياضة / مدريد" },
                     { text: "كيف هي أحوال الطقس ودرجة الحرارة في تيزنيت؟", label: "☀️ أحوال الطقس" },
                     { text: "أعطني مقادير وطريقة تحضير كيك الشوكولاتة", label: "🍰 وصفة طبخ" },
                     { text: "ما هي توقعات برج العقرب لهذا الشهر؟", label: "🔮 أبراج وفلك" },
+                    { text: "عندي عطب في علبة السرعات وزيت المحرك في سيارتي، كيف أصلحه؟", label: "🚗 ميكانيك وسيارات" },
+                    { text: "هل تنصحني بالاستثمار في البيتكوين وشراء العملات الرقمية وتداول الفوركس؟", label: "🪙 تداول وكريبتو" },
+                    { text: "أريد أرخص تذاكر طيران وحجز فندق في باريس لقضاء عطلة سياحية", label: "✈️ سياحة وفنادق" },
+                    { text: "أعاني من صداع نصفي حاد وتساقط الشعر، ما هو الدواء المناسب لحالتي؟", label: "💊 طب وعلاج" },
                   ].map((item, idx) => (
                     <button
                       key={idx}
                       onClick={() => {
                         setCustomQuestion(item.text);
+                        setGeneratedTopic(item.label);
                       }}
                       className="text-xs px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 transition-colors cursor-pointer"
                       title={item.text}

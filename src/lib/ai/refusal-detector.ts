@@ -195,12 +195,28 @@ export function isOutOfScopeQuery(
   if (isAstrology) return true;
 
   // 4. Recipes & Cooking
-  const isCooking = /(?:طريقة تحضير|وصفة طبخ|طريقة عمل كيك|مقادير كيك|شهيوات|cuisine|recette\b)/i.test(raw);
+  const isCooking = /(?:طريقة تحضير|وصفة طبخ|طريقة عمل كيك|مقادير كيك|شهيوات|طبخ مغربي|طريقة طهي|cuisine|recette\b)/i.test(raw);
   if (isCooking) return true;
 
   // 5. Entertainment, Cinema & Celebrity gossip
-  const isEntertainment = /(?:أخبار الفنانين|أخبار المشاهير|أغاني جديدة|مسلسلات رمضان|فيلم هندي)/i.test(raw);
+  const isEntertainment = /(?:أخبار الفنانين|أخبار المشاهير|أغاني جديدة|مسلسلات رمضان|فيلم هندي|نتفليكس|netflix|سينما|شاهد نت)/i.test(raw);
   if (isEntertainment) return true;
+
+  // 6. Automotive & Mechanics (e.g. زيت المحرك، علبة السرعات، عطب السيارة)
+  const isAutomotive = /(?:عطب في السيارة|زيت المحرك|علبة السرعات|ميكانيك السيارات|فرامل السيارة|شراء سيارة مستعملة|vidange|panne voiture)/i.test(raw);
+  if (isAutomotive) return true;
+
+  // 7. Cryptocurrencies & Forex Trading (e.g. بيتكوين، تداول، عملات رقمية)
+  const isCryptoFinance = /(?:البيتكوين|bitcoin|تداول العملات|العملات الرقمية|فوركس|forex|شراء إيثريوم|كريبتو|crypto)/i.test(raw);
+  if (isCryptoFinance) return true;
+
+  // 8. General Tourism, International Visas & Flights (non-union)
+  const isGeneralTourism = /(?:حجز فندق في باريس|تأشيرة شينغن|فيزا سياحية إلى فرنسا|عطلة في تركيا|تذاكر طيران رخيصة)/i.test(raw);
+  if (isGeneralTourism) return true;
+
+  // 9. General Medical & Disease Diagnosis (non-administrative, non-CNOPS)
+  const isMedicalDiagnosis = /(?:علاج تساقط الشعر|أعراض مرض السكري|علاج ألم الأسنان في المنزل|دواء الصداع النصفي)/i.test(raw);
+  if (isMedicalDiagnosis) return true;
 
   return false;
 }
