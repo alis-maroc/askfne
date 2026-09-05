@@ -639,7 +639,7 @@ function AISection({
                 onChange={(v) => {
                   update("externalAiProvider", v);
                   if (v === "gemini") {
-                    update("externalAiModel", "gemini-2.5-flash");
+                    update("externalAiModel", "gemini-3.6-flash");
                   } else if (v === "groq") {
                     update("externalAiModel", "openai/gpt-oss-120b");
                   } else if (v === "openai") {
@@ -675,7 +675,7 @@ function AISection({
                 onChange={(v) => update("externalAiApiKey", v)}
                 placeholder={
                   data.externalAiProvider === "gemini"
-                    ? "AIzaSy..."
+                    ? "AQ.... or AIzaSy..."
                     : data.externalAiProvider === "openai"
                     ? "sk-..."
                     : "gsk_..."
@@ -687,7 +687,7 @@ function AISection({
               label="Model"
               description={
                 data.externalAiProvider === "gemini"
-                  ? "Recommended: gemini-2.5-flash (Fast, state-of-the-art knowledge, free tier)."
+                  ? "Recommended: gemini-3.6-flash (Fast, state-of-the-art knowledge, free tier)."
                   : data.externalAiProvider === "openai"
                   ? "Recommended: gpt-4o-mini."
                   : "Recommended: openai/gpt-oss-120b (high performance, excellent Arabic support)."
@@ -697,7 +697,7 @@ function AISection({
                 value={
                   data.externalAiModel ||
                   (data.externalAiProvider === "gemini"
-                    ? "gemini-2.5-flash"
+                    ? "gemini-3.6-flash"
                     : data.externalAiProvider === "openai"
                     ? "gpt-4o-mini"
                     : "openai/gpt-oss-120b")
@@ -706,9 +706,10 @@ function AISection({
                 options={
                   data.externalAiProvider === "gemini"
                     ? [
-                        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Recommended, Ultra-fast)" },
-                        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro (Advanced reasoning)" },
-                        { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+                        { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash (Recommended, Ultra-fast)" },
+                        { value: "gemini-flash-latest", label: "Gemini Flash Latest" },
+                        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+                        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
                       ]
                     : data.externalAiProvider === "openai"
                     ? [

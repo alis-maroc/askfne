@@ -1953,12 +1953,12 @@ export async function callExternalAiFallback(
   // Build resilient model candidates.
   const preferredModel = (config.externalAiModel && config.externalAiModel !== "llama-3.3-70b-versatile")
     ? config.externalAiModel
-    : (provider === "gemini" ? "gemini-2.5-flash" : "openai/gpt-oss-120b");
+    : (provider === "gemini" ? "gemini-3.6-flash" : "openai/gpt-oss-120b");
 
   const candidateModels = provider === "groq"
     ? Array.from(new Set([preferredModel, "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]))
     : provider === "gemini"
-    ? Array.from(new Set([preferredModel, "gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"]))
+    ? Array.from(new Set([preferredModel, "gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro"]))
     : [preferredModel];
 
   let baseURL = "https://api.groq.com/openai/v1";
