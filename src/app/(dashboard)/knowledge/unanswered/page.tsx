@@ -1075,18 +1075,18 @@ export default function UnansweredQuestionsPage() {
                       </div>
                     </div>
 
-                    {/* 2. Full-Width Middle Row: AI Response Box (w-full, spacious, no compression!) */}
+                    {/* 2. Full-Width Middle Row: AI Response Box (w-full, spacious, RTL formatted) */}
                     {item.lastResponse && (
-                      <div className="w-full">
+                      <div className="w-full" dir="rtl">
                         <div className={cn(
-                          "text-xs rounded-xl border overflow-hidden transition-all",
+                          "text-xs rounded-xl border overflow-hidden transition-all text-right",
                           item.sourceType === "external_ai"
                             ? "bg-purple-50/40 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800/60"
                             : "bg-owly-bg border-owly-border/60"
                         )}>
                           {item.sourceType === "external_ai" ? (
                             <div>
-                              <div className="px-3.5 py-2 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-200/60 dark:border-purple-800/40 flex items-center justify-between gap-2 flex-wrap">
+                              <div className="px-3.5 py-2 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-200/60 dark:border-purple-800/40 flex items-center justify-between gap-2 flex-wrap" dir="rtl">
                                 <span className="font-bold text-[11px] text-purple-800 dark:text-purple-300 flex items-center gap-1.5">
                                   <Sparkles className="h-3.5 w-3.5 text-purple-600" />
                                   <span>الرد المقترح من الذكاء الخارجي (Gemini) :</span>
@@ -1123,21 +1123,21 @@ export default function UnansweredQuestionsPage() {
                                 </div>
                               </div>
 
-                              <div className="p-3.5">
+                              <div className="p-3.5 text-right" dir="rtl">
                                 {expandedResponseKeys.has(item.question) ? (
-                                  <div className="max-h-80 overflow-y-auto overflow-x-auto text-xs text-owly-text leading-relaxed whitespace-pre-wrap rounded-lg bg-owly-surface/90 border border-owly-border/50 p-4 shadow-inner font-sans">
+                                  <div className="max-h-80 overflow-y-auto overflow-x-auto text-xs text-owly-text leading-relaxed whitespace-pre-wrap rounded-lg bg-owly-surface/90 border border-owly-border/50 p-4 shadow-inner font-sans text-right" dir="rtl">
                                     {item.lastResponse}
                                   </div>
                                 ) : (
-                                  <p className="text-xs leading-relaxed text-owly-text line-clamp-2">
+                                  <p className="text-xs leading-relaxed text-owly-text line-clamp-2 text-right" dir="rtl">
                                     {item.lastResponse}
                                   </p>
                                 )}
                               </div>
                             </div>
                           ) : (
-                            <div className="px-3.5 py-2 flex items-center justify-between gap-2">
-                              <p className="line-clamp-1 italic text-xs text-owly-text-light/80">
+                            <div className="px-3.5 py-2 flex items-center justify-between gap-2 text-right" dir="rtl">
+                              <p className="line-clamp-1 italic text-xs text-owly-text-light/80 text-right" dir="rtl">
                                 جواب المساعد السابق: "{item.lastResponse}"
                               </p>
                               {item.lastResponse.length > 80 && (
@@ -1153,7 +1153,7 @@ export default function UnansweredQuestionsPage() {
                           )}
 
                           {item.sourceType !== "external_ai" && expandedResponseKeys.has(item.question) && (
-                            <div className="p-3 pt-0 text-xs text-owly-text leading-6 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                            <div className="p-3 pt-0 text-xs text-owly-text leading-6 whitespace-pre-wrap max-h-48 overflow-y-auto text-right" dir="rtl">
                               {item.lastResponse}
                             </div>
                           )}
@@ -1885,15 +1885,15 @@ export default function UnansweredQuestionsPage() {
                               <span className="text-owly-text font-bold">{compareData.local.message}</span>
                             </div>
                             <div className={cn(
-                              "p-3 rounded-lg text-xs leading-6 whitespace-pre-wrap font-normal border",
+                              "p-3 rounded-lg text-xs leading-6 whitespace-pre-wrap font-normal border text-right",
                               compareData.local.hasAnswer
                                 ? "bg-emerald-50/40 border-emerald-200 text-owly-text"
                                 : "bg-red-50/30 border-red-200 text-red-900 dark:text-red-300"
-                            )}>
+                            )} dir="rtl">
                               {compareData.local.answer || "لم يتم إرجاع أي نص."}
                             </div>
                           </div>
-                          <div className="pt-2 text-[11px] text-owly-text-light border-t border-owly-border/50">
+                          <div className="pt-2 text-[11px] text-owly-text-light border-t border-owly-border/50 text-right" dir="rtl">
                             هذا هو الرد الذي سيتلقاه المنخرط في حال كانت ميزة الذكاء الخارجي معطلة.
                           </div>
                         </div>
@@ -1933,7 +1933,7 @@ export default function UnansweredQuestionsPage() {
                               <span>الحالة:</span>
                               <span className="font-bold">{compareData.external.message}</span>
                             </div>
-                            <div className="p-3 bg-owly-surface border border-purple-200 dark:border-purple-800/50 rounded-lg text-xs text-owly-text leading-6 whitespace-pre-wrap font-normal max-h-64 overflow-y-auto">
+                            <div className="p-3 bg-owly-surface border border-purple-200 dark:border-purple-800/50 rounded-lg text-xs text-owly-text leading-6 whitespace-pre-wrap font-normal max-h-64 overflow-y-auto text-right" dir="rtl">
                               {compareData.external.answer || "لا تتوفر إجابة مولدة."}
                             </div>
                           </div>
