@@ -86,6 +86,8 @@ export default function AiTestLabPage() {
   const [isCustomRunning, setIsCustomRunning] = useState(false);
   const [isGeneratingOutOfScope, setIsGeneratingOutOfScope] = useState(false);
   const [generatedTopic, setGeneratedTopic] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; currentQuestion?: string } | null>(null);
+  const [hiddenTestIds, setHiddenTestIds] = useState<string[]>([]);
 
   // Load Test Suite & Flagged Count
   const loadTestSuite = useCallback(async () => {
@@ -118,10 +120,32 @@ export default function AiTestLabPage() {
     }
   }, []);
 
+  // Load hidden questions from localStorage
   useEffect(() => {
-    loadTestSuite();
-    loadFlaggedItems();
-  }, [loadTestSuite, loadFlaggedItems]);
+    try {
+      const savedHidden = localStorage.getItem("owly_hidden_test_ids");
+      if (savedHidden) {
+        setHiddenTestIds(JSON.parse(savedHidden));
+      }
+    } catch (_) {}
+  }, []);
+
+  const hideTestQuestion = (testId: string) => {
+    setHiddenTestIds((prev) => {
+      const updated = Array.from(new Set([...prev, testId]));
+      try {
+        localStorage.setItem("owly_hidden_test_ids", JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+  };
+
+  const restoreAllHiddenQuestions = () => {
+    setHiddenTestIds([]);
+    try {
+      localStorage.removeItem("owly_hidden_test_ids");
+    } catch (_) {}
+  };
 
   // Run a single predefined test
   const runSingleTest = async (testId: string) => {
@@ -144,31 +168,47 @@ export default function AiTestLabPage() {
     }
   };
 
-  // Run batch test suite
+  // Run batch test suite sequentially with live progress and real-time result streaming
   const runAllTests = async () => {
     setIsRunningAll(true);
+    const testsToExecute = filteredTests;
+    setBatchProgress({ current: 0, total: testsToExecute.length, currentQuestion: "بدء الفحص الشامل..." });
+
     try {
-      const res = await fetch("/api/ai-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "run_all",
-          categoryFilter: selectedCategory,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const newResultsMap: Record<string, TestResult> = {};
-        for (const item of data.results || []) {
-          newResultsMap[item.testId] = item;
+      for (let i = 0; i < testsToExecute.length; i++) {
+        const test = testsToExecute[i];
+        setBatchProgress({
+          current: i + 1,
+          total: testsToExecute.length,
+          currentQuestion: test.question,
+        });
+        setRunningTestId(test.id);
+
+        try {
+          const res = await fetch("/api/ai-test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "run_single", testId: test.id }),
+          });
+          if (res.ok) {
+            const result: TestResult = await res.json();
+            setResults((prev) => ({ ...prev, [test.id]: result }));
+          }
+        } catch (err) {
+          console.error(`Test ${test.id} failed:`, err);
         }
-        setResults((prev) => ({ ...prev, ...newResultsMap }));
       }
-    } catch (err) {
-      console.error("Batch test failed:", err);
     } finally {
       setIsRunningAll(false);
+      setRunningTestId(null);
+      setBatchProgress(null);
     }
+  };
+
+  // Clear / Reset all test results from screen
+  const clearAllResults = () => {
+    setResults({});
+    setCustomResult(null);
   };
 
   // Run custom sandbox question
@@ -296,10 +336,12 @@ export default function AiTestLabPage() {
     setTimeout(() => setCopiedPrompt(false), 3000);
   };
 
-  // Filtered tests
-  const filteredTests = selectedCategory === "ALL"
+  // Filtered tests (excluding questions deleted/hidden by admin)
+  const baseTests = selectedCategory === "ALL"
     ? testSuite
     : testSuite.filter((t) => t.category === selectedCategory);
+
+  const filteredTests = baseTests.filter((t) => !hiddenTestIds.includes(t.id));
 
   // Overall Stats Calculation
   const totalCompleted = Object.keys(results).length;
@@ -381,24 +423,71 @@ export default function AiTestLabPage() {
                   </p>
                 </div>
 
-                <button
-                  onClick={runAllTests}
-                  disabled={isRunningAll}
-                  className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm bg-white text-red-700 hover:bg-red-50 active:scale-95 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:pointer-events-none cursor-pointer flex-shrink-0"
-                >
-                  {isRunningAll ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-red-600" />
-                      جاري الاختبار الشامل...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4 fill-red-600 text-red-600" />
-                      بدء الاختبار الشامل ({filteredTests.length} سؤال)
-                    </>
+                <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+                  {totalCompleted > 0 && (
+                    <button
+                      onClick={clearAllResults}
+                      disabled={isRunningAll}
+                      className="inline-flex items-center gap-1.5 px-4 py-3.5 rounded-xl font-bold text-xs bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all cursor-pointer disabled:opacity-50"
+                      title="مسح كافة النتائج السابقة من الشاشة"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-300" />
+                      <span>مسح النتائج</span>
+                    </button>
                   )}
-                </button>
+
+                  {hiddenTestIds.length > 0 && (
+                    <button
+                      onClick={restoreAllHiddenQuestions}
+                      className="inline-flex items-center gap-1.5 px-3 py-3.5 rounded-xl font-bold text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30 transition-all cursor-pointer"
+                      title="استعادة كافة الأسئلة التي قمت بحذفها أو إخفائها"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>استعادة ({hiddenTestIds.length}) أسئلة محذوفة</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={runAllTests}
+                    disabled={isRunningAll || filteredTests.length === 0}
+                    className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm bg-white text-red-700 hover:bg-red-50 active:scale-95 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                  >
+                    {isRunningAll ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-red-600" />
+                        <span>جاري الفحص المباشر ({batchProgress?.current || 0}/{batchProgress?.total || filteredTests.length})...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-red-600 text-red-600" />
+                        <span>بدء الاختبار الشامل ({filteredTests.length} سؤال)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
+
+              {/* Real-time Progress Bar */}
+              {isRunningAll && batchProgress && (
+                <div className="mt-4 pt-4 border-t border-white/20 space-y-2 animate-fadeIn">
+                  <div className="flex items-center justify-between text-xs text-red-100">
+                    <span className="font-bold flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      يتم الآن فحص السؤال ({batchProgress.current} من {batchProgress.total}):
+                      <span className="text-white font-black truncate max-w-lg">{batchProgress.currentQuestion}</span>
+                    </span>
+                    <span className="font-mono font-bold">
+                      {Math.round((batchProgress.current / batchProgress.total) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-yellow-400 to-emerald-400 transition-all duration-300 ease-out"
+                      style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Metric Cards */}
@@ -612,19 +701,34 @@ export default function AiTestLabPage() {
                       زمن المعالجة: {(customResult.latencyMs / 1000).toFixed(1)} ثانية
                     </span>
 
-                    <button
-                      onClick={() =>
-                        setFlaggingTarget({
-                          question: customResult.question,
-                          response: customResult.response,
-                          sources: customResult.sources,
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 transition-colors cursor-pointer"
-                    >
-                      <Flag className="w-3.5 h-3.5 text-amber-600" />
-                      تعليم للتصحيح 🚩
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setCustomResult(null);
+                          setCustomQuestion("");
+                          setGeneratedTopic(null);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-200 dark:bg-slate-700 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950/40 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+                        title="مسح السؤال والنتيجة الحالية"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>مسح</span>
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          setFlaggingTarget({
+                            question: customResult.question,
+                            response: customResult.response,
+                            sources: customResult.sources,
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 transition-colors cursor-pointer"
+                      >
+                        <Flag className="w-3.5 h-3.5 text-amber-600" />
+                        تعليم للتصحيح 🚩
+                      </button>
+                    </div>
                   </div>
 
                   <div className="p-4 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm whitespace-pre-wrap leading-relaxed text-slate-800 dark:text-slate-200">
@@ -771,6 +875,15 @@ export default function AiTestLabPage() {
                             <span className="hidden sm:inline">تصحيح</span>
                           </button>
                         )}
+
+                        <button
+                          onClick={() => hideTestQuestion(test.id)}
+                          disabled={isRunning || isRunningAll}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer disabled:opacity-50"
+                          title="حذف هذا السؤال من قائمة الاختبارات"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
 
                         <button
                           onClick={() => runSingleTest(test.id)}
